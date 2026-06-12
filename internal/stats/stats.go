@@ -30,6 +30,15 @@ type Store struct {
     TrafficSecs []int         // rolling 30s window
     curSecPkts  int
     Subscribers []chan Packet
+    BandwidthSecs []int64
+    curSecBytes   int64
+    Connections   map[string]*ConnEntry
+}
+
+type ConnEntry struct {
+    Src   string `json:"src"`
+    Dst   string `json:"dst"`
+    Count int    `json:"count"`
 }
 
 func New() *Store {
@@ -37,6 +46,8 @@ func New() *Store {
         ProtoCounts: map[string]int{"TCP": 0, "UDP": 0, "DNS": 0, "ICMP": 0, "HTTP": 0},
         IPCounts:    map[string]*IPEntry{},
         TrafficSecs: make([]int, 30),
+        BandwidthSecs: make([]int64, 30),
+        Connections: map[string]*ConnEntry{},
     }
 }
 
@@ -47,6 +58,13 @@ func (s *Store) Add(p Packet) {
     if p.Flagged { s.Flagged++ }
     s.ProtoCounts[p.Proto]++
     s.curSecPkts++
+    s.curSecBytes += int64(p.Size)
+
+    ck := p.SrcIP + "|" + p.DstIP
+    if _, ok := s.Connections[ck]; !ok {
+        s.Connections[ck] = &ConnEntry{Src: p.SrcIP, Dst: p.DstIP}
+    }
+    s.Connections[ck].Count++
     key := p.SrcIP
     if e, ok := s.IPCounts[key]; ok {
         e.Count++
@@ -70,6 +88,8 @@ func (s *Store) TickSecond() {
     defer s.mu.Unlock()
     s.TrafficSecs = append(s.TrafficSecs[1:], s.curSecPkts)
     s.curSecPkts = 0
+    s.BandwidthSecs = append(s.BandwidthSecs[1:], s.curSecBytes)
+    s.curSecBytes = 0
 }
 
 func (s *Store) Subscribe() chan Packet {
@@ -97,9 +117,12 @@ type Snapshot struct {
     TotalBytes int64          `json:"total_bytes"`
     Flagged    int            `json:"flagged"`
     Conns      int            `json:"connections"`
+    Bandwidth  []int64        `json:"bandwidth"`
     Protos     map[string]int `json:"protos"`
     Traffic    []int          `json:"traffic"`
     TopIPs     []IPEntry      `json:"top_ips"`
+    TopConns   []ConnEntry    `json:"top_conns"`
+    CurBandwidth int64          `json:"cur_bandwidth"`
 }
 
 func (s *Store) Snapshot() Snapshot {
@@ -124,6 +147,21 @@ func (s *Store) Snapshot() Snapshot {
     }
     top := entries
     if len(top) > 6 { top = top[:6] }
+    // Inside Snapshot(), after building top IPs:
+    bw := make([]int64, 30)
+    copy(bw, s.BandwidthSecs)
+    curBW := s.BandwidthSecs[len(s.BandwidthSecs)-1]
+
+    conns := make([]ConnEntry, 0, len(s.Connections))
+    for _, c := range s.Connections { conns = append(conns, *c) }
+    for i := 0; i < len(conns) && i < 25; i++ {
+        max := i
+        for j := i + 1; j < len(conns); j++ {
+            if conns[j].Count > conns[max].Count { max = j }
+        }
+        conns[i], conns[max] = conns[max], conns[i]
+    }
+    if len(conns) > 25 { conns = conns[:25] }
 
     return Snapshot{
         TotalPkts:  s.TotalPkts,
@@ -133,5 +171,8 @@ func (s *Store) Snapshot() Snapshot {
         Protos:     protos,
         Traffic:    traffic,
         TopIPs:     top,
+        TopConns:   conns,
+        CurBandwidth: curBW,
+        Bandwidth:  bw,
     }
 }

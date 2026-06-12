@@ -12,17 +12,19 @@ import (
 
     "example.com/packet-analyser/internal/capture"
     "example.com/packet-analyser/internal/stats"
+    "example.com/packet-analyser/internal/geo"
 )
 
 type Handler struct {
     store     *stats.Store
     capturer  *capture.Capturer
     tmpl      *template.Template
+    geo      *geo.Lookup
 }
 
-func New(store *stats.Store, c *capture.Capturer) *Handler {
+func New(store *stats.Store, c *capture.Capturer, g *geo.Lookup) *Handler {
     tmpl := template.Must(template.ParseFiles("templates/index.html"))
-    return &Handler{store: store, capturer: c, tmpl: tmpl}
+    return &Handler{store: store, capturer: c, geo: g, tmpl: tmpl}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -31,6 +33,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
     mux.HandleFunc("GET /api/stats", h.apiStats)
     mux.HandleFunc("GET /api/topips", h.apiTopIPs)
     mux.HandleFunc("POST /capture/filter", h.setFilter)
+    mux.HandleFunc("GET /api/connections", h.apiConnections)
+    mux.HandleFunc("GET /api/geoips",      h.apiGeoIPs)
 }
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
@@ -124,4 +128,65 @@ func Log(next http.Handler) http.Handler {
         log.Printf("%s %s", r.Method, r.URL.Path)
         next.ServeHTTP(w, r)
     })
+}
+
+// apiConnections returns a D3-ready {nodes, links} graph of top connections.
+func (h *Handler) apiConnections(w http.ResponseWriter, r *http.Request) {
+    snap := h.store.Snapshot()
+
+    type Node struct {
+        ID      string `json:"id"`
+        Packets int    `json:"packets"`
+    }
+    type Link struct {
+        Source string `json:"source"`
+        Target string `json:"target"`
+        Count  int    `json:"count"`
+    }
+    type Graph struct {
+        Nodes []Node `json:"nodes"`
+        Links []Link `json:"links"`
+    }
+
+    nodeMap := map[string]int{}
+    links   := make([]Link, 0, len(snap.TopConns))
+
+    for _, c := range snap.TopConns {
+        nodeMap[c.Src] += c.Count
+        nodeMap[c.Dst] += c.Count
+        links = append(links, Link{Source: c.Src, Target: c.Dst, Count: c.Count})
+    }
+
+    nodes := make([]Node, 0, len(nodeMap))
+    for id, pkts := range nodeMap {
+        nodes = append(nodes, Node{ID: id, Packets: pkts})
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(Graph{Nodes: nodes, Links: links})
+}
+
+// apiGeoIPs resolves top source IPs to geographic locations.
+func (h *Handler) apiGeoIPs(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Content-Type", "application/json")
+    if h.geo == nil {
+        json.NewEncoder(w).Encode([]struct{}{})
+        return
+    }
+    snap := h.store.Snapshot()
+
+    // aggregate packet count per unique source IP
+    ipCount := map[string]int{}
+    for _, c := range snap.TopConns {
+        ipCount[c.Src] += c.Count
+    }
+
+    locs := make([]geo.Location, 0)
+    for ip, count := range ipCount {
+        loc, err := h.geo.Locate(ip, count)
+        if err != nil { continue }
+        locs = append(locs, *loc)
+    }
+
+    json.NewEncoder(w).Encode(locs)
 }
