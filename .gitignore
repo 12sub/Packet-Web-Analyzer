@@ -1,0 +1,23 @@
+# Binaries
+packet-analyzer
+packet-analyzer.exe
+*.exe
+
+# Go build cache
+/vendor/
+
+# Environment files
+.env
+*.env.local
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log
+.dockerignore

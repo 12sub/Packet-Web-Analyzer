@@ -1,0 +1,46 @@
+services:
+  packet-analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: packet-analyzer
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+
+    # Raw packet capture requires host networking so the container can see
+    # real interface traffic. Without this, gopacket falls back to mock mode.
+    network_mode: host
+
+    # Grant only the two capabilities needed for raw socket access.
+    # Do NOT use privileged: true — it grants far more than necessary.
+    cap_add:
+      - NET_RAW      # open raw/promiscuous sockets
+      - NET_ADMIN    # set BPF filters on the interface
+
+    # Explicitly drop everything else
+    cap_drop:
+      - ALL
+
+    # Read-only filesystem; only /tmp is writable
+    read_only: true
+    tmpfs:
+      - /tmp
+
+    environment:
+      - IFACE=${IFACE:-}        # optional: pin to a specific interface
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
