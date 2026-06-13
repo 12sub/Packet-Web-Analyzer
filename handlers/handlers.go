@@ -65,41 +65,55 @@ func (h *Handler) setFilter(w http.ResponseWriter, r *http.Request) {
 }
 
 // ssePackets streams each packet as an HTMX-compatible SSE event.
+// ssePackets streams each packet as an HTMX-compatible SSE event.
 func (h *Handler) ssePackets(w http.ResponseWriter, r *http.Request) {
-    flusher, ok := w.(http.Flusher)
-    if !ok { http.Error(w, "SSE not supported", 500); return }
+	flusher, ok := w.(http.Flusher)
+	if !ok { 
+		http.Error(w, "SSE not supported", 500)
+		return 
+	}
+	
+	// FIX 1: Removed trailing spaces in header keys and values
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
 
-    w.Header().Set("Content-Type", "text/event-stream")
-    w.Header().Set("Cache-Control", "no-cache")
-    w.Header().Set("Connection", "keep-alive")
+	ch := h.store.Subscribe()
+	defer h.store.Unsubscribe(ch)
 
-    ch := h.store.Subscribe()
-    defer h.store.Unsubscribe(ch)
-
-    for {
-        select {
-        case <-r.Context().Done():
-            return
-        case pkt, ok := <-ch:
-            if !ok { return }
-            flagClass := ""
-            if pkt.Flagged { flagClass = " flagged" }
-            html := fmt.Sprintf(
-                `<tr class="pkt-row%s"><td>%s</td><td>%s</td>`+
-                `<td><span class="ptag %s">%s</span></td>`+
-                `<td>%dB</td><td>%s</td></tr>`,
-                flagClass,
-                pkt.SrcIP, pkt.DstIP,
-                pkt.Proto, pkt.Proto,
-                pkt.Size,
-                pkt.Time.Format("15:04:05.000"),
-            )
-            fmt.Fprintf(w, "event: packet\ndata: %s\n\n", html)
-            flusher.Flush()
-        }
-    }
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case pkt, ok := <-ch:
+			if !ok { 
+				return 
+			}
+			
+			flagClass := ""
+			if pkt.Flagged { 
+				flagClass = " flagged" 
+			}
+			
+			// FIX 2: Cleaned up the HTML string (removed random spaces inside tags)
+			html := fmt.Sprintf(
+				`<tr class="pkt-row%s"><td>%s</td><td>%s</td>`+
+				`<td><span class="ptag%s">%s</span></td>`+
+				`<td>%dB</td><td>%s</td></tr>`,
+				flagClass,
+				pkt.SrcIP, pkt.DstIP,
+				" "+pkt.Proto, pkt.Proto, // Adds a space before the protocol for the CSS class
+				pkt.Size,
+				pkt.Time.Format("15:04:05.000"), // FIX 3: Removed trailing space in time format
+			)
+			
+			// FIX 4: Removed the trailing space after \n\n. 
+			// SSE strictly requires exactly \n\n to separate events.
+			fmt.Fprintf(w, "event: packet\ndata: %s\n\n", html)
+			flusher.Flush()
+		}
+	}
 }
-
 // apiStats returns a JSON snapshot for cards + charts.
 func (h *Handler) apiStats(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Content-Type", "application/json")

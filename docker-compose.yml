@@ -6,8 +6,8 @@ services:
     container_name: packet-analyser
     restart: unless-stopped
 
-    ports:
-      - "8080:8080"
+    # ports:
+    #   - "8080:8080"
 
     # Raw packet capture requires host networking so the container can see
     # real interface traffic. Without this, gopacket falls back to mock mode.

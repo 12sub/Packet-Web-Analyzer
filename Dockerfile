@@ -1,5 +1,5 @@
 # ── Stage 1: build ────────────────────────────────────────────────────────────
-FROM golang:1.22-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 
 WORKDIR /app
 
@@ -15,7 +15,7 @@ RUN go mod download
 # Copy source and build a statically-linked binary
 COPY . .
 RUN CGO_ENABLED=1 GOOS=linux \
-    go build -ldflags="-s -w" -o /packet-analyzer .
+    go build -ldflags="-s -w" -o /packet-analyser .
 
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
@@ -29,7 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && rm -rf /var/lib/apt/lists/*
 
 # Copy binary and HTML templates
-COPY --from=builder /packet-analyzer .
+COPY --from=builder /packet-analyser .
 COPY templates/ templates/
 
 EXPOSE 8080
