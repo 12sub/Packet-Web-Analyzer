@@ -38,4 +38,4 @@ EXPOSE 8080
 RUN useradd -r -s /bin/false appuser
 USER appuser
 
-ENTRYPOINT ["./packet-analyzer"]
+ENTRYPOINT ["./packet-analyser"]

@@ -1,9 +1,9 @@
 services:
-  packet-analyzer:
+  packet-analyser:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: packet-analyzer
+    container_name: packet-analyser
     restart: unless-stopped
 
     ports:

@@ -4,74 +4,124 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Packet Analyzer</title>
+
+  <!-- HTMX + SSE extension -->
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
+
+  <!-- Chart.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-  <!-- Leaflet — Geo IP map -->
-<link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<!-- D3 — Connection graph -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+
+  <!-- D3 — connection graph -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+
+  <!-- Leaflet — geo IP map -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: system-ui, sans-serif; background: #f5f5f3; color: #1a1a18; }
-    .analytics { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:16px; }
-    .analytics .geo-panel { grid-column: 1 / -1; }   /* full width */
-    #geo-map  { height:280px; border-radius:6px; }
-    #conn-svg { width:100%; height:260px; }
-    .bw-badge { font-size:12px; color:#888780; margin-bottom:8px; }
-    .bw-badge span { font-family:monospace; color:#1a1a18; font-weight:500; }
-@media(max-width:720px){ .analytics{ grid-template-columns:1fr; } .analytics .geo-panel{ grid-column:1; } }
-    header { display:flex; align-items:center; gap:12px; padding:12px 20px; background:#fff;
-             border-bottom:0.5px solid #d3d1c7; flex-wrap:wrap; }
-    header h1 { font-size:15px; font-weight:500; flex:1; }
-    .dot { width:8px;height:8px;border-radius:50%;background:#3B6D11;
-           display:inline-block;animation:pulse 1.4s infinite; }
-    @keyframes pulse { 0%,100%{opacity:1}50%{opacity:.25} }
-    .badge { font-size:12px;padding:3px 10px;border-radius:6px;border:0.5px solid #d3d1c7;
-             color:#5f5e5a;background:#f1efe8; }
-    main { padding:16px 20px; max-width:1200px; margin:0 auto; }
-    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
-             gap:10px; margin-bottom:16px; }
-    .card { background:#fff; border-radius:8px; border:0.5px solid #d3d1c7; padding:14px 16px; }
-    .card-label { font-size:12px; color:#888780; margin-bottom:4px; }
-    .card-val { font-size:22px; font-weight:500; font-family:monospace; }
-    .card-val.danger { color:#a32d2d; }
-    .mid, .bottom { display:grid; grid-template-columns:1.7fr 1fr; gap:12px; margin-bottom:16px; }
-    .panel { background:#fff; border:0.5px solid #d3d1c7; border-radius:10px; padding:14px 16px; }
-    .panel-title { font-size:11px; font-weight:500; color:#888780; text-transform:uppercase;
-                   letter-spacing:.05em; margin-bottom:10px; }
-    .feed-wrap { max-height:220px; overflow:hidden; }
-    table { width:100%; border-collapse:collapse; font-size:12px; font-family:monospace;
-            table-layout:fixed; }
-    th { font-size:11px; color:#888780; font-weight:400; text-align:left; padding:0 6px 6px; }
-    td { padding:4px 6px; border-top:0.5px solid #e8e6e0; overflow:hidden;
-         text-overflow:ellipsis; white-space:nowrap; }
-    .ptag { font-size:10px;padding:1px 6px;border-radius:4px;font-weight:500;display:inline-block; }
-    .ptag.TCP  { background:#E6F1FB;color:#0C447C; }
-    .ptag.UDP  { background:#EAF3DE;color:#3B6D11; }
-    .ptag.DNS  { background:#FAEEDA;color:#633806; }
-    .ptag.ICMP { background:#FBEAF0;color:#72243E; }
-    .ptag.HTTP { background:#EEEDFE;color:#3C3489; }
-    tr.flagged td { background:#FCEBEB; }
-    .bar-bg { width:100%;height:5px;background:#f1efe8;border-radius:3px;overflow:hidden; }
-    .bar-fill { height:5px;background:#378ADD;border-radius:3px; }
-    .filter-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+    /* ── Header ── */
+    header {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 20px; background: #fff;
+      border-bottom: 0.5px solid #d3d1c7; flex-wrap: wrap;
+    }
+    header h1 { font-size: 15px; font-weight: 500; flex: 1; }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%; background: #3B6D11;
+      display: inline-block; animation: pulse 1.4s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+    .badge {
+      font-size: 12px; padding: 3px 10px; border-radius: 6px;
+      border: 0.5px solid #d3d1c7; color: #5f5e5a; background: #f1efe8;
+    }
+
+    /* ── BPF filter bar ── */
+    .filter-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .filter-bar input {
-      font-size:12px; font-family:monospace; padding:4px 10px;
-      border:0.5px solid #d3d1c7; border-radius:6px; background:#f9f8f5;
-      color:#1a1a18; width:260px; outline:none;
+      font-size: 12px; font-family: monospace; padding: 4px 10px;
+      border: 0.5px solid #d3d1c7; border-radius: 6px;
+      background: #f9f8f5; color: #1a1a18; width: 260px; outline: none;
     }
-    .filter-bar input:focus { border-color:#378ADD; background:#fff; }
+    .filter-bar input:focus { border-color: #378ADD; background: #fff; }
     .filter-bar button {
-      font-size:12px; padding:4px 12px; border-radius:6px;
-      border:0.5px solid #d3d1c7; background:#fff; color:#1a1a18;
-      cursor:pointer;
+      font-size: 12px; padding: 4px 12px; border-radius: 6px;
+      border: 0.5px solid #d3d1c7; background: #fff;
+      color: #1a1a18; cursor: pointer;
     }
-    .filter-bar button:hover { background:#f1efe8; }
-    #filter-status { font-size:12px; font-family:monospace; }
-    .filter-ok  { color:#3B6D11; }
-    .filter-err { color:#a32d2d; }
+    .filter-bar button:hover { background: #f1efe8; }
+    #filter-status { font-size: 12px; font-family: monospace; }
+    .filter-ok  { color: #3B6D11; }
+    .filter-err { color: #a32d2d; }
+
+    /* ── Layout ── */
+    main { padding: 16px 20px; max-width: 1200px; margin: 0 auto; }
+
+    /* ── Summary cards ── */
+    .cards {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px; margin-bottom: 16px;
+    }
+    .card {
+      background: #fff; border-radius: 8px;
+      border: 0.5px solid #d3d1c7; padding: 14px 16px;
+    }
+    .card-label { font-size: 12px; color: #888780; margin-bottom: 4px; }
+    .card-val   { font-size: 22px; font-weight: 500; font-family: monospace; }
+    .card-val.danger { color: #a32d2d; }
+
+    /* ── Panels ── */
+    .panel {
+      background: #fff; border: 0.5px solid #d3d1c7;
+      border-radius: 10px; padding: 14px 16px;
+    }
+    .panel-title {
+      font-size: 11px; font-weight: 500; color: #888780;
+      text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px;
+    }
+
+    /* ── Grid rows ── */
+    .mid, .bottom { display: grid; grid-template-columns: 1.7fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .analytics    { display: grid; grid-template-columns: 1fr 1fr;   gap: 12px; margin-bottom: 16px; }
+    .analytics .geo-panel { grid-column: 1 / -1; }
+
+    /* ── Packet feed ── */
+    .feed-wrap { max-height: 220px; overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: monospace; table-layout: fixed; }
+    th { font-size: 11px; color: #888780; font-weight: 400; text-align: left; padding: 0 6px 6px; }
+    td { padding: 4px 6px; border-top: 0.5px solid #e8e6e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    tr.flagged td { background: #FCEBEB; }
+
+    /* ── Protocol tags ── */
+    .ptag { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 500; display: inline-block; }
+    .ptag.TCP  { background: #E6F1FB; color: #0C447C; }
+    .ptag.UDP  { background: #EAF3DE; color: #3B6D11; }
+    .ptag.DNS  { background: #FAEEDA; color: #633806; }
+    .ptag.ICMP { background: #FBEAF0; color: #72243E; }
+    .ptag.HTTP { background: #EEEDFE; color: #3C3489; }
+
+    /* ── Top IPs bar ── */
+    .bar-bg   { width: 100%; height: 5px; background: #f1efe8; border-radius: 3px; overflow: hidden; }
+    .bar-fill { height: 5px; background: #378ADD; border-radius: 3px; }
+
+    /* ── Bandwidth badge ── */
+    .bw-badge { font-size: 12px; color: #888780; margin-bottom: 8px; }
+    .bw-badge span { font-family: monospace; color: #1a1a18; font-weight: 500; }
+
+    /* ── Geo map ── */
+    #geo-map { height: 280px; border-radius: 6px; }
+
+    /* ── Connection graph ── */
+    #conn-svg { width: 100%; height: 260px; }
+
+    @media(max-width: 720px) {
+      .mid, .bottom, .analytics { grid-template-columns: 1fr; }
+      .analytics .geo-panel { grid-column: 1; }
+    }
   </style>
 </head>
 <body>
@@ -80,7 +130,7 @@
   <h1>⬡ Packet Analyzer</h1>
   <span class="badge"><span class="dot"></span> Live capture</span>
 
-  <!-- BPF filter input — submits via HTMX POST, swaps in status badge -->
+  <!-- BPF filter -->
   <div class="filter-bar">
     <input  id="bpf-input"
             type="text"
@@ -96,8 +146,10 @@
 </header>
 
 <main>
-  <!-- Summary cards — polled every 2s via HTMX -->
-  <div class="cards" id="stat-cards"
+
+  <!-- ── Summary cards (polled every 2s via HTMX) ── -->
+  <div class="cards"
+       id="stat-cards"
        hx-get="/api/stats"
        hx-trigger="load, every 2s"
        hx-swap="none"
@@ -108,8 +160,8 @@
     <div class="card"><div class="card-label">Flagged</div><div class="card-val danger" id="c-flag">—</div></div>
   </div>
 
+  <!-- ── Row 1: live feed + protocol donut ── -->
   <div class="mid">
-    <!-- Live packet feed via SSE -->
     <div class="panel">
       <div class="panel-title">Live packet feed</div>
       <div class="feed-wrap">
@@ -131,50 +183,24 @@
       </div>
     </div>
 
-    <!-- Protocol donut chart -->
     <div class="panel">
       <div class="panel-title">Protocol breakdown</div>
       <div style="position:relative;height:170px;">
-        <canvas id="protoChart" role="img" aria-label="Protocol distribution donut chart">Protocol chart</canvas>
+        <canvas id="protoChart" role="img" aria-label="Protocol distribution donut chart"></canvas>
       </div>
       <div id="proto-legend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;font-size:11px;color:#888780;"></div>
     </div>
   </div>
 
+  <!-- ── Row 2: traffic line + top IPs ── -->
   <div class="bottom">
-    <!-- Traffic line chart -->
     <div class="panel">
       <div class="panel-title">Traffic — packets / sec (30s window)</div>
       <div style="position:relative;height:150px;">
-        <canvas id="trafficChart" role="img" aria-label="Line chart of packets per second over 30 seconds">Traffic chart</canvas>
+        <canvas id="trafficChart" role="img" aria-label="Packets per second over 30 seconds"></canvas>
       </div>
     </div>
-    <div class="analytics">
 
-  <!-- Bandwidth meter -->
-  <div class="panel">
-    <div class="panel-title">Bandwidth — bytes / sec</div>
-    <div class="bw-badge">Current: <span id="bw-current">—</span></div>
-    <div style="position:relative;height:200px;">
-      <canvas id="bwChart" role="img" aria-label="Bytes per second over 30 seconds">Bandwidth chart</canvas>
-    </div>
-  </div>
-
-  <!-- Connection graph -->
-  <div class="panel">
-    <div class="panel-title">Connection graph</div>
-    <svg id="conn-svg" role="img" aria-label="Force-directed graph of source to destination IP connections"></svg>
-  </div>
-
-  <!-- Geo IP map -->
-  <div class="panel geo-panel">
-    <div class="panel-title">Geo IP map</div>
-    <div id="geo-map"></div>
-  </div>
-
-</div>
-
-    <!-- Top IPs table -->
     <div class="panel">
       <div class="panel-title">Top source IPs</div>
       <table>
@@ -183,105 +209,83 @@
       </table>
     </div>
   </div>
+
+  <!-- ── Row 3: bandwidth + connection graph ── -->
+  <div class="analytics">
+    <div class="panel">
+      <div class="panel-title">Bandwidth — bytes / sec</div>
+      <div class="bw-badge">Current: <span id="bw-current">—</span></div>
+      <div style="position:relative;height:200px;">
+        <canvas id="bwChart" role="img" aria-label="Bytes per second over 30 seconds"></canvas>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Connection graph</div>
+      <svg id="conn-svg" role="img" aria-label="Force-directed graph of IP connections"></svg>
+    </div>
+
+    <!-- ── Geo IP map (full width) ── -->
+    <div class="panel geo-panel">
+      <div class="panel-title">Geo IP map</div>
+      <div id="geo-map"></div>
+    </div>
+  </div>
+
 </main>
 
 <script>
-// --- BPF filter ---
-function postFilter(expr) {
-  const body = new URLSearchParams({ filter: expr });
-  fetch('/capture/filter', { method: 'POST', body })
-    .then(r => r.text())
-    .then(html => {
-      document.getElementById('filter-status').innerHTML = html;
-      // auto-clear status after 4 seconds
-      setTimeout(() => {
-        const el = document.getElementById('filter-status');
-        if (el) el.innerHTML = '';
-      }, 4000);
-    });
-}
-function applyFilter() {
-  postFilter(document.getElementById('bpf-input').value.trim());
-}
-function clearFilter() {
-  document.getElementById('bpf-input').value = '';
-  postFilter('');
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+const PROTOS = ['TCP', 'UDP', 'DNS', 'ICMP', 'HTTP'];
+const COLORS = ['#378ADD', '#3B6D11', '#BA7517', '#993356', '#534AB7'];
 
-const PROTOS = ['TCP','UDP','DNS','ICMP','HTTP'];
-const COLORS  = ['#378ADD','#3B6D11','#BA7517','#993356','#534AB7'];
-
-// --- Protocol donut ---
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart.js — protocol donut
+// ─────────────────────────────────────────────────────────────────────────────
 const protoChart = new Chart(document.getElementById('protoChart'), {
   type: 'doughnut',
-  data: { labels: PROTOS, datasets: [{ data: [1,1,1,1,1], backgroundColor: COLORS, borderWidth: 0 }] },
-  options: { responsive:true, maintainAspectRatio:false, cutout:'65%',
-             plugins:{ legend:{display:false} } }
+  data: {
+    labels: PROTOS,
+    datasets: [{ data: [1,1,1,1,1], backgroundColor: COLORS, borderWidth: 0 }]
+  },
+  options: {
+    responsive: true, maintainAspectRatio: false, cutout: '65%',
+    plugins: { legend: { display: false } }
+  }
 });
 
-// --- Traffic line chart ---
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart.js — traffic (packets/sec)
+// ─────────────────────────────────────────────────────────────────────────────
 const trafficChart = new Chart(document.getElementById('trafficChart'), {
   type: 'line',
   data: {
     labels: Array(30).fill(''),
-    datasets: [{ label:'pkt/s', data: Array(30).fill(0),
-      borderColor:'#378ADD', backgroundColor:'rgba(55,138,221,.07)',
-      fill:true, tension:.35, pointRadius:0, borderWidth:1.5 }]
+    datasets: [{
+      label: 'pkt/s', data: Array(30).fill(0),
+      borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,.07)',
+      fill: true, tension: .35, pointRadius: 0, borderWidth: 1.5
+    }]
   },
-  options: { responsive:true, maintainAspectRatio:false, animation:{duration:300},
+  options: {
+    responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
     scales: {
-      x: { display:false },
-      y: { min:0, border:{display:false},
-           ticks:{ maxTicksLimit:4, color:'#888780', font:{size:10}, callback: v=>Math.round(v) },
-           grid:{ color:'rgba(0,0,0,.05)' } }
+      x: { display: false },
+      y: {
+        min: 0, border: { display: false },
+        ticks: { maxTicksLimit: 4, color: '#888780', font: { size: 10 }, callback: v => Math.round(v) },
+        grid: { color: 'rgba(0,0,0,.05)' }
+      }
     },
-    plugins:{ legend:{display:false} }
+    plugins: { legend: { display: false } }
   }
 });
 
-// --- Card + chart updater ---
-function updateCards(evt) {
-  const d = JSON.parse(evt.detail.xhr.responseText);
-
-  document.getElementById('c-total').textContent = d.total_pkts.toLocaleString();
-  const kb = d.total_bytes / 1024;
-  document.getElementById('c-data').textContent =
-    kb > 1024 ? (kb/1024).toFixed(1)+' MB' : Math.round(kb)+' KB';
-  document.getElementById('c-conns').textContent = d.connections;
-  document.getElementById('c-flag').textContent  = d.flagged;
-
-  // update donut
-  protoChart.data.datasets[0].data = PROTOS.map(p => d.protos[p] || 0);
-  protoChart.update('none');
-
-  // update legend
-  const total = PROTOS.reduce((s,p)=>s+(d.protos[p]||0),0)||1;
-  document.getElementById('proto-legend').innerHTML = PROTOS.map((p,i)=>
-    `<span style="display:flex;align-items:center;gap:3px;">
-      <span style="width:9px;height:9px;border-radius:2px;background:${COLORS[i]};display:inline-block;"></span>
-      ${p} ${d.protos[p]||0}
-    </span>`).join('');
-
-  // update traffic chart
-  trafficChart.data.datasets[0].data = d.traffic;
-  trafficChart.update();
-
-  // update top IPs
-  const maxC = d.top_ips.length ? d.top_ips[0].count : 1;
-  document.getElementById('ip-body').innerHTML = d.top_ips.map(e=>`
-    <tr>
-      <td>${e.ip}</td><td>${e.count}</td>
-      <td><div class="bar-bg"><div class="bar-fill" style="width:${Math.round(e.count/maxC*100)}%"></div></div></td>
-    </tr>`).join('');
-}
-
-// Trim feed to latest 20 rows to avoid DOM bloat
-const feedObs = new MutationObserver(()=>{
-  const tb = document.getElementById('feed-body');
-  while(tb.children.length > 20) tb.removeChild(tb.lastChild);
-});
-feedObs.observe(document.getElementById('feed-body'),{childList:true});
-// ── Bandwidth chart ──────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Chart.js — bandwidth (bytes/sec)
+// ─────────────────────────────────────────────────────────────────────────────
 const bwChart = new Chart(document.getElementById('bwChart'), {
   type: 'line',
   data: {
@@ -293,50 +297,112 @@ const bwChart = new Chart(document.getElementById('bwChart'), {
     }]
   },
   options: {
-    responsive: true, maintainAspectRatio: false, animation: {duration:300},
+    responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
     scales: {
-      x: {display: false},
+      x: { display: false },
       y: {
-        min: 0, border: {display:false},
-        ticks: { maxTicksLimit:4, color:'#888780', font:{size:10},
+        min: 0, border: { display: false },
+        ticks: {
+          maxTicksLimit: 4, color: '#888780', font: { size: 10 },
           callback: v => v >= 1048576 ? (v/1048576).toFixed(1)+'MB'
-                      : v >= 1024    ? (v/1024).toFixed(1)+'KB'
-                      : v+'B' },
-        grid: {color:'rgba(0,0,0,.05)'}
+                       : v >= 1024   ? (v/1024).toFixed(1)+'KB'
+                       : v+'B'
+        },
+        grid: { color: 'rgba(0,0,0,.05)' }
       }
     },
-    plugins: {legend:{display:false}}
+    plugins: { legend: { display: false } }
   }
 });
 
-// Extend updateCards() to include bandwidth data
-const _origUpdateCards = updateCards;
+// ─────────────────────────────────────────────────────────────────────────────
+// HTMX callback — single unified function (fixes the recursion bug)
+// Updates: stat cards, protocol donut, traffic chart, top IPs, bandwidth chart
+// ─────────────────────────────────────────────────────────────────────────────
 function updateCards(evt) {
-  _origUpdateCards(evt);
   const d = JSON.parse(evt.detail.xhr.responseText);
 
-  // bandwidth chart
-  bwChart.data.datasets[0].data = d.bandwidth;
-  bwChart.update();
+  // stat cards
+  document.getElementById('c-total').textContent = d.total_pkts.toLocaleString();
+  const kb = d.total_bytes / 1024;
+  document.getElementById('c-data').textContent =
+    kb > 1024 ? (kb / 1024).toFixed(1) + ' MB' : Math.round(kb) + ' KB';
+  document.getElementById('c-conns').textContent = d.connections;
+  document.getElementById('c-flag').textContent  = d.flagged;
 
-  // current speed badge
-  const bps = d.cur_bandwidth;
-  document.getElementById('bw-current').textContent =
-    bps >= 1048576 ? (bps/1048576).toFixed(2)+' MB/s' :
-    bps >= 1024    ? (bps/1024).toFixed(1)+' KB/s'    :
-                     bps+' B/s';
+  // protocol donut
+  protoChart.data.datasets[0].data = PROTOS.map(p => d.protos[p] || 0);
+  protoChart.update('none');
+
+  // protocol legend
+  document.getElementById('proto-legend').innerHTML = PROTOS.map((p, i) =>
+    `<span style="display:flex;align-items:center;gap:3px;">
+      <span style="width:9px;height:9px;border-radius:2px;background:${COLORS[i]};display:inline-block;"></span>
+      ${p} ${d.protos[p] || 0}
+    </span>`).join('');
+
+  // traffic chart
+  trafficChart.data.datasets[0].data = d.traffic;
+  trafficChart.update();
+
+  // top IPs
+  const maxC = d.top_ips && d.top_ips.length ? d.top_ips[0].count : 1;
+  document.getElementById('ip-body').innerHTML = (d.top_ips || []).map(e => `
+    <tr>
+      <td>${e.ip}</td>
+      <td>${e.count}</td>
+      <td><div class="bar-bg"><div class="bar-fill" style="width:${Math.round(e.count / maxC * 100)}%"></div></div></td>
+    </tr>`).join('');
+
+  // bandwidth chart + badge
+  if (d.bandwidth) {
+    bwChart.data.datasets[0].data = d.bandwidth;
+    bwChart.update();
+    const bps = d.cur_bandwidth || 0;
+    document.getElementById('bw-current').textContent =
+      bps >= 1048576 ? (bps / 1048576).toFixed(2) + ' MB/s' :
+      bps >= 1024    ? (bps / 1024).toFixed(1)    + ' KB/s' :
+                       bps + ' B/s';
+  }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Trim packet feed to latest 20 rows to avoid DOM bloat
+// ─────────────────────────────────────────────────────────────────────────────
+const feedObs = new MutationObserver(() => {
+  const tb = document.getElementById('feed-body');
+  while (tb.children.length > 20) tb.removeChild(tb.lastChild);
+});
+feedObs.observe(document.getElementById('feed-body'), { childList: true });
 
-// ── Connection graph (D3 force) ──────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// BPF filter
+// ─────────────────────────────────────────────────────────────────────────────
+function postFilter(expr) {
+  fetch('/capture/filter', { method: 'POST', body: new URLSearchParams({ filter: expr }) })
+    .then(r => r.text())
+    .then(html => {
+      document.getElementById('filter-status').innerHTML = html;
+      setTimeout(() => {
+        const el = document.getElementById('filter-status');
+        if (el) el.innerHTML = '';
+      }, 4000);
+    });
+}
+function applyFilter() { postFilter(document.getElementById('bpf-input').value.trim()); }
+function clearFilter()  { document.getElementById('bpf-input').value = ''; postFilter(''); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// D3 — connection graph
+// ─────────────────────────────────────────────────────────────────────────────
 const connSvg = d3.select('#conn-svg');
-const W = () => document.getElementById('conn-svg').clientWidth;
-const H = 260;
+const GH = 260;
+const GW = () => document.getElementById('conn-svg').clientWidth;
 
-let simulation = d3.forceSimulation()
-  .force('link',   d3.forceLink().id(d => d.id).distance(80))
-  .force('charge', d3.forceManyBody().strength(-120))
-  .force('center', d3.forceCenter(W()/2, H/2))
+const simulation = d3.forceSimulation()
+  .force('link',      d3.forceLink().id(d => d.id).distance(80))
+  .force('charge',    d3.forceManyBody().strength(-120))
+  .force('center',    d3.forceCenter(GW() / 2, GH / 2))
   .force('collision', d3.forceCollide(18));
 
 function subnetColor(ip) {
@@ -348,9 +414,10 @@ function subnetColor(ip) {
 
 function updateGraph(data) {
   connSvg.selectAll('*').remove();
-  if (!data.nodes.length) {
-    connSvg.append('text').attr('x','50%').attr('y','50%')
-      .attr('text-anchor','middle').attr('fill','#888780').attr('font-size',12)
+  if (!data.nodes || !data.nodes.length) {
+    connSvg.append('text')
+      .attr('x', '50%').attr('y', '50%')
+      .attr('text-anchor', 'middle').attr('fill', '#888780').attr('font-size', 12)
       .text('No connections yet');
     return;
   }
@@ -359,52 +426,53 @@ function updateGraph(data) {
 
   const link = connSvg.append('g').selectAll('line')
     .data(data.links).join('line')
-    .attr('stroke','#d3d1c7')
-    .attr('stroke-width', d => 1 + (d.count/maxCnt)*3);
+    .attr('stroke', '#d3d1c7')
+    .attr('stroke-width', d => 1 + (d.count / maxCnt) * 3);
 
   const node = connSvg.append('g').selectAll('g')
     .data(data.nodes).join('g')
     .call(d3.drag()
-      .on('start', (e,d) => { if(!e.active) simulation.alphaTarget(.3).restart(); d.fx=d.x; d.fy=d.y; })
-      .on('drag',  (e,d) => { d.fx=e.x; d.fy=e.y; })
-      .on('end',   (e,d) => { if(!e.active) simulation.alphaTarget(0); d.fx=null; d.fy=null; }));
+      .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
+      .on('end',   (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
 
   node.append('circle')
-    .attr('r', d => 6 + (d.packets/maxPkts)*10)
+    .attr('r', d => 6 + (d.packets / maxPkts) * 10)
     .attr('fill', d => subnetColor(d.id))
     .attr('fill-opacity', .85)
-    .attr('stroke','#fff').attr('stroke-width',1.5);
+    .attr('stroke', '#fff').attr('stroke-width', 1.5);
 
   node.append('text')
-    .attr('dy','0.35em').attr('dx', d => 8 + (d.packets/maxPkts)*10)
-    .attr('font-size', 9).attr('fill','#5f5e5a')
-    .attr('font-family','monospace').text(d => d.id);
+    .attr('dy', '0.35em').attr('dx', d => 8 + (d.packets / maxPkts) * 10)
+    .attr('font-size', 9).attr('fill', '#5f5e5a').attr('font-family', 'monospace')
+    .text(d => d.id);
 
   node.append('title').text(d => `${d.id}\n${d.packets} packets`);
 
   simulation.nodes(data.nodes).on('tick', () => {
-    link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y)
-        .attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
-    node.attr('transform',d=>`translate(${d.x},${d.y})`);
+    link
+      .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
   });
   simulation.force('link').links(data.links);
-  simulation.force('center').x(W()/2).y(H/2);
+  simulation.force('center').x(GW() / 2).y(GH / 2);
   simulation.alpha(0.8).restart();
 }
 
-// Poll connection graph every 3s
 async function pollConnections() {
   try {
     const r = await fetch('/api/connections');
     updateGraph(await r.json());
-  } catch(e) { console.warn('connections poll:', e); }
+  } catch (e) { console.warn('connections poll:', e); }
 }
 pollConnections();
 setInterval(pollConnections, 3000);
 
-
-// ── Geo IP map (Leaflet) ─────────────────────────────────────────────────────
-const map = L.map('geo-map', {zoomControl:true}).setView([20, 0], 2);
+// ─────────────────────────────────────────────────────────────────────────────
+// Leaflet — Geo IP map
+// ─────────────────────────────────────────────────────────────────────────────
+const map = L.map('geo-map', { zoomControl: true }).setView([20, 0], 2);
 L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
   attribution: '© OpenStreetMap contributors © CARTO',
   maxZoom: 18
@@ -416,23 +484,20 @@ async function pollGeoIPs() {
   try {
     const r    = await fetch('/api/geoips');
     const locs = await r.json();
-
     locs.forEach(loc => {
       if (!loc.lat && !loc.lng) return;
-      const key = loc.ip;
       const radius = Math.max(6, Math.min(30, 4 + loc.count * 0.05));
-      if (geoMarkers[key]) {
-        geoMarkers[key].setRadius(radius)
-          .bindPopup(`<b>${loc.ip}</b><br>${loc.city}, ${loc.country}<br>${loc.count} packets`);
+      const popup  = `<b>${loc.ip}</b><br>${loc.city}, ${loc.country}<br>${loc.count} packets`;
+      if (geoMarkers[loc.ip]) {
+        geoMarkers[loc.ip].setRadius(radius).bindPopup(popup);
       } else {
-        geoMarkers[key] = L.circleMarker([loc.lat, loc.lng], {
-          radius, color:'#378ADD', fillColor:'#378ADD',
-          fillOpacity:.55, weight:1.5
-        }).bindPopup(`<b>${loc.ip}</b><br>${loc.city}, ${loc.country}<br>${loc.count} packets`)
-          .addTo(map);
+        geoMarkers[loc.ip] = L.circleMarker([loc.lat, loc.lng], {
+          radius, color: '#378ADD', fillColor: '#378ADD',
+          fillOpacity: .55, weight: 1.5
+        }).bindPopup(popup).addTo(map);
       }
     });
-  } catch(e) { console.warn('geoips poll:', e); }
+  } catch (e) { console.warn('geoips poll:', e); }
 }
 pollGeoIPs();
 setInterval(pollGeoIPs, 5000);
