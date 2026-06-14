@@ -1,13 +1,15 @@
 package main
 
 import (
-    "log"
-    "net/http"
+	"log"
+	"net/http"
 
-    "example.com/packet-analyser/handlers"
-    "example.com/packet-analyser/internal/capture"
-    "example.com/packet-analyser/internal/stats"
-    "example.com/packet-analyser/internal/geo"
+	"example.com/packet-analyser/handlers"
+	"example.com/packet-analyser/internal/capture"
+	"example.com/packet-analyser/internal/db"
+	"example.com/packet-analyser/internal/export"
+	"example.com/packet-analyser/internal/geo"
+	"example.com/packet-analyser/internal/stats"
 )
 
 func main() {
@@ -24,7 +26,16 @@ func main() {
         defer g.Close()
     }
 
-    h := handlers.New(store, cap, g)
+     // SQLite session history
+    database, err := db.Open("./exports/session.db")
+    if err != nil { log.Fatal("[db]", err) }
+    defer database.Close()
+
+    // export manager
+    ex, err := export.New()
+    if err != nil { log.Fatal("[export]", err) }
+
+    h := handlers.New(store, cap, g, ex, database)
     mux := http.NewServeMux()
     h.Register(mux)
 

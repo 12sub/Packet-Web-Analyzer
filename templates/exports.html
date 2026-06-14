@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exports — Packet Analyser</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f3; color: #1a1a18; }
+
+    /* ── Header ── */
+    header {
+      display: flex; align-items: center; gap: 16px;
+      padding: 12px 24px; background: #fff;
+      border-bottom: 0.5px solid #d3d1c7;
+    }
+    header h1 { font-size: 15px; font-weight: 500; flex: 1; }
+    .nav-link {
+      font-size: 13px; color: #5f5e5a; text-decoration: none;
+      padding: 4px 10px; border-radius: 6px; border: 0.5px solid #d3d1c7;
+    }
+    .nav-link:hover { background: #f1efe8; }
+
+    /* ── Layout ── */
+    main { max-width: 860px; margin: 0 auto; padding: 24px; }
+
+    /* ── Section cards ── */
+    .section {
+      background: #fff; border: 0.5px solid #d3d1c7;
+      border-radius: 10px; padding: 20px 24px; margin-bottom: 16px;
+    }
+    .section-title {
+      font-size: 13px; font-weight: 500; color: #1a1a18;
+      margin-bottom: 4px;
+    }
+    .section-desc {
+      font-size: 12px; color: #888780; margin-bottom: 16px;
+    }
+
+    /* ── Action rows ── */
+    .action-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 0; border-top: 0.5px solid #e8e6e0;
+      flex-wrap: wrap;
+    }
+    .action-row:first-of-type { border-top: none; padding-top: 0; }
+    .action-label { font-size: 13px; flex: 1; color: #1a1a18; }
+    .action-meta  { font-size: 11px; color: #888780; }
+
+    /* ── Buttons ── */
+    .btn {
+      font-size: 12px; padding: 5px 14px; border-radius: 6px;
+      border: 0.5px solid #d3d1c7; cursor: pointer;
+      background: #fff; color: #1a1a18; white-space: nowrap;
+    }
+    .btn:hover    { background: #f1efe8; }
+    .btn-primary  { background: #1a1a18; color: #fff; border-color: #1a1a18; }
+    .btn-primary:hover { background: #333; }
+    .btn-danger   { color: #a32d2d; border-color: #e8c9c9; }
+    .btn-danger:hover { background: #fef2f2; }
+    .btn-start    { background: #EAF3DE; color: #3B6D11; border-color: #c6dfa8; }
+    .btn-stop     { background: #FBEAF0; color: #72243E; border-color: #e8b8cc; }
+
+    /* ── Status badges ── */
+    .status-ok   { font-size: 12px; font-family: monospace; color: #3B6D11; }
+    .status-idle { font-size: 12px; font-family: monospace; color: #888780; }
+    .status-err  { font-size: 12px; font-family: monospace; color: #a32d2d; }
+
+    /* ── File list ── */
+    #file-list { margin-top: 4px; }
+    .file-row {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 0; border-top: 0.5px solid #e8e6e0;
+      flex-wrap: wrap;
+    }
+    .file-icon { font-size: 16px; }
+    .file-name { font-size: 13px; font-family: monospace; flex: 1; color: #1a1a18; word-break: break-all; }
+    .file-meta { font-size: 11px; color: #888780; white-space: nowrap; }
+    .file-actions { display: flex; gap: 6px; }
+    .btn-dl  { font-size: 12px; padding: 4px 12px; border-radius: 6px; background: #1a1a18;
+               color: #fff; text-decoration: none; border: none; cursor: pointer; }
+    .btn-dl:hover { background: #333; }
+    .btn-del { font-size: 12px; padding: 4px 10px; border-radius: 6px; background: #fff;
+               color: #a32d2d; border: 0.5px solid #e8c9c9; cursor: pointer; }
+    .btn-del:hover { background: #fef2f2; }
+
+    .empty    { font-size: 13px; color: #888780; padding: 16px 0; }
+    .db-count { font-size: 12px; color: #888780; margin-bottom: 10px; font-family: monospace; }
+
+    /* ── PCAP status inline area ── */
+    #pcap-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    /* ── Export status messages ── */
+    .export-msg { font-size: 12px; font-family: monospace; }
+
+    /* ── HTMX indicator ── */
+    .htmx-indicator { display: none; font-size: 11px; color: #888780; }
+    .htmx-request .htmx-indicator { display: inline; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⬡ Packet Analyzer — Exports</h1>
+  <a class="nav-link" href="/">← Live dashboard</a>
+</header>
+
+<main>
+
+  <!-- ── PCAP recording ── -->
+  <div class="section">
+    <div class="section-title">PCAP recording</div>
+    <div class="section-desc">
+      Record live packets to a .pcap file. Stop the recording to finalise it,
+      then download from the file list below. Compatible with Wireshark.
+    </div>
+
+    <div class="action-row">
+      <span class="action-label">Capture status</span>
+      <div id="pcap-status">
+        {{if .Recording}}
+          <span class="status-ok">● Recording active</span>
+          <button class="btn btn-stop"
+            hx-post="/exports/stop-pcap"
+            hx-target="#pcap-status"
+            hx-swap="innerHTML">Stop</button>
+        {{else}}
+          <span class="status-idle">● Idle</span>
+          <button class="btn btn-start"
+            hx-post="/exports/start-pcap"
+            hx-target="#pcap-status"
+            hx-swap="innerHTML">Start recording</button>
+        {{end}}
+      </div>
+    </div>
+  </div>
+
+  <!-- ── One-shot exports ── -->
+  <div class="section">
+    <div class="section-title">Export snapshots</div>
+    <div class="section-desc">
+      Generate a one-time export from current session data.
+    </div>
+
+    <div class="action-row">
+      <span class="action-label">
+        Packet history <span class="action-meta">— last 50,000 rows from session DB → .csv</span>
+      </span>
+      <span id="csv-msg" class="export-msg"></span>
+      <button class="btn btn-primary"
+        hx-post="/exports/csv"
+        hx-target="#csv-msg"
+        hx-swap="innerHTML"
+        hx-indicator="#csv-spin">
+        Export CSV
+      </button>
+      <span id="csv-spin" class="htmx-indicator">generating…</span>
+    </div>
+
+    <div class="action-row">
+      <span class="action-label">
+        Stats snapshot <span class="action-meta">— current counters + charts data → .json</span>
+      </span>
+      <span id="json-msg" class="export-msg"></span>
+      <button class="btn btn-primary"
+        hx-post="/exports/json"
+        hx-target="#json-msg"
+        hx-swap="innerHTML"
+        hx-indicator="#json-spin">
+        Export JSON
+      </button>
+      <span id="json-spin" class="htmx-indicator">generating…</span>
+    </div>
+  </div>
+
+  <!-- ── File list ── -->
+  <div class="section">
+    <div class="section-title">Generated files</div>
+    <div class="section-desc">
+      All exports are stored in <code>./exports/</code> on the server.
+      Files persist across container restarts via the Docker volume.
+    </div>
+
+    <!-- polled every 5s via HTMX so new files appear automatically -->
+    <div id="file-list"
+         hx-get="/exports/files"
+         hx-trigger="load, every 5s"
+         hx-swap="innerHTML">
+      <p class="empty">Loading…</p>
+    </div>
+  </div>
+
+</main>
+
+</body>
+</html>
