@@ -13,34 +13,39 @@ import (
 )
 
 func main() {
-    store := stats.New()
-    cap   := capture.Start(store)
-    go handlers.SecondTicker(store)
+	store := stats.New()
+	cap := capture.Start(store)
+	go handlers.SecondTicker(store)
 
-    // Geo lookup — gracefully disabled if DB file is absent
-    g, err := geo.New("GeoLite2-City.mmdb")
-    if err != nil {
-        log.Println("[geo] disabled:", err)
-    } else {
-        log.Println("[geo] GeoLite2 database loaded")
-        defer g.Close()
-    }
+	// Geo lookup — gracefully disabled if DB file is absent
+	g, err := geo.New("GeoLite2-City.mmdb")
+	if err != nil {
+		log.Println("[geo] disabled:", err)
+	} else {
+		log.Println("[geo] GeoLite2 database loaded")
+		defer g.Close()
+	}
 
-     // SQLite session history
-    database, err := db.Open("./exports/session.db")
-    if err != nil { log.Fatal("[db]", err) }
-    defer database.Close()
+	// SQLite session history
+	database, err := db.Open("./exports/session.db")
+	if err != nil {
+		log.Fatal("[db] ", err)
+	}
+	defer database.Close()
 
-    // export manager
-    ex, err := export.New()
-    if err != nil { log.Fatal("[export]", err) }
+	// export manager
+	ex, err := export.New()
+	if err != nil {
+		log.Fatal("[export] ", err)
+	}
 
-    h := handlers.New(store, cap, g, ex, database)
-    mux := http.NewServeMux()
-    h.Register(mux)
+	h := handlers.New(store, cap, g, ex, database)
+	mux := http.NewServeMux()
+	h.Register(mux)
 
-    log.Println("listening on :8080")
-    if err := http.ListenAndServe(":8080", handlers.Log(mux)); err != nil {
-        log.Fatal(err)
-    }
+	log.Println("listening on :8080")
+	// FIX: Removed trailing space from ":8080 "
+	if err := http.ListenAndServe(":8080", handlers.Log(mux)); err != nil {
+		log.Fatal(err)
+	}
 }

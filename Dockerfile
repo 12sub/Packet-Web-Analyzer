@@ -34,8 +34,16 @@ COPY templates/ templates/
 
 EXPOSE 8080
 
+
+
+
 # Drop to a non-root user — capabilities are granted by compose, not by root
 RUN useradd -r -s /bin/false appuser
+
+# 2. Create the exports directory and give ownership to appuser.
+# This ensures the Docker named volume inherits the correct write permissions.
+RUN mkdir -p /app/exports && chown -R appuser:appuser /app/exports
+
 USER appuser
 
 ENTRYPOINT ["./packet-analyser"]

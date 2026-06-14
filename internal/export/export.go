@@ -19,7 +19,6 @@ import (
 
 const ExportDir = "./exports"
 
-// FileInfo describes a completed export file.
 type FileInfo struct {
 	Name    string    `json:"name"`
 	Size    int64     `json:"size_bytes"`
@@ -27,7 +26,6 @@ type FileInfo struct {
 	Created time.Time `json:"created"`
 }
 
-// Exporter manages long-running PCAP recording and one-shot exports.
 type Exporter struct {
 	mu        sync.Mutex
 	pcapFile  *os.File
@@ -42,10 +40,6 @@ func New() (*Exporter, error) {
 	return &Exporter{}, nil
 }
 
-// ── PCAP recording ────────────────────────────────────────────────────────────
-
-// StartPCAP opens a new .pcap file and begins recording.
-// Returns an error if recording is already active.
 func (e *Exporter) StartPCAP() (string, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -58,7 +52,6 @@ func (e *Exporter) StartPCAP() (string, error) {
 	if err != nil {
 		return "", err
 	}
-
 	w := pcapgo.NewWriter(f)
 	if err := w.WriteFileHeader(65535, layers.LinkTypeEthernet); err != nil {
 		f.Close()
@@ -70,7 +63,6 @@ func (e *Exporter) StartPCAP() (string, error) {
 	return name, nil
 }
 
-// StopPCAP flushes and closes the current PCAP file.
 func (e *Exporter) StopPCAP() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -84,7 +76,6 @@ func (e *Exporter) StopPCAP() error {
 	return err
 }
 
-// WritePacket writes a single packet to the open PCAP file (no-op if not recording).
 func (e *Exporter) WritePacket(p stats.Packet) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -96,27 +87,21 @@ func (e *Exporter) WritePacket(p stats.Packet) {
 		CaptureLength: p.Size,
 		Length:        p.Size,
 	}
-	// Write a minimal Ethernet + dummy payload so the file is valid
 	dummy := make([]byte, p.Size)
 	e.pcapW.WritePacket(ci, dummy)
 }
 
-// IsRecording reports whether a PCAP capture is active.
 func (e *Exporter) IsRecording() bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	return e.recording
 }
 
-// ── One-shot exports ──────────────────────────────────────────────────────────
-
-// ExportCSV writes recent rows from SQLite to a CSV file.
 func ExportCSV(database *db.DB, limit int) (string, error) {
 	rows, err := database.QueryRecent(limit)
 	if err != nil {
 		return "", err
 	}
-
 	name := fmt.Sprintf("packets_%s.csv", timestamp())
 	f, err := os.Create(filepath.Join(ExportDir, name))
 	if err != nil {
@@ -137,7 +122,6 @@ func ExportCSV(database *db.DB, limit int) (string, error) {
 	return name, w.Error()
 }
 
-// ExportJSON writes a stats snapshot to a JSON file.
 func ExportJSON(snap stats.Snapshot) (string, error) {
 	name := fmt.Sprintf("stats_%s.json", timestamp())
 	f, err := os.Create(filepath.Join(ExportDir, name))
@@ -145,22 +129,16 @@ func ExportJSON(snap stats.Snapshot) (string, error) {
 		return "", err
 	}
 	defer f.Close()
-
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
 	return name, enc.Encode(snap)
 }
 
-// ── File listing ──────────────────────────────────────────────────────────────
-
-// ListFiles returns metadata for all files in the export directory,
-// newest first.
 func ListFiles() ([]FileInfo, error) {
 	entries, err := os.ReadDir(ExportDir)
 	if err != nil {
 		return nil, err
 	}
-
 	var files []FileInfo
 	for i := len(entries) - 1; i >= 0; i-- {
 		e := entries[i]
@@ -183,9 +161,8 @@ func ListFiles() ([]FileInfo, error) {
 	return files, nil
 }
 
-// DeleteFile removes a single export file by name (path traversal safe).
 func DeleteFile(name string) error {
-	clean := filepath.Base(name) // strip any path components
+	clean := filepath.Base(name)
 	return os.Remove(filepath.Join(ExportDir, clean))
 }
 
