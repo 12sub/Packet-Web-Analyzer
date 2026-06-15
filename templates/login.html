@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — Packet Analyzer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f5f5f3;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1a1a18;
+    }
+
+    .login-card {
+      background: #fff;
+      border: 0.5px solid #d3d1c7;
+      border-radius: 12px;
+      padding: 36px 40px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 4px 24px rgba(0,0,0,.06);
+    }
+
+    .logo {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+      margin-bottom: 4px;
+    }
+    .logo span { color: #378ADD; }
+
+    .subtitle {
+      font-size: 13px;
+      color: #888780;
+      margin-bottom: 28px;
+    }
+
+    .field { margin-bottom: 16px; }
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 500;
+      color: #5f5e5a;
+      margin-bottom: 6px;
+    }
+    .field input {
+      width: 100%;
+      font-size: 14px;
+      padding: 9px 12px;
+      border: 0.5px solid #d3d1c7;
+      border-radius: 7px;
+      background: #fafaf8;
+      color: #1a1a18;
+      outline: none;
+      transition: border-color .15s, background .15s;
+    }
+    .field input:focus {
+      border-color: #378ADD;
+      background: #fff;
+    }
+
+    .error-msg {
+      font-size: 12px;
+      color: #a32d2d;
+      background: #fcebeb;
+      border: 0.5px solid #e8c9c9;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 16px;
+    }
+
+    .btn-login {
+      width: 100%;
+      padding: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      background: #1a1a18;
+      color: #fff;
+      border: none;
+      border-radius: 7px;
+      cursor: pointer;
+      margin-top: 4px;
+      transition: background .15s;
+    }
+    .btn-login:hover { background: #333; }
+
+    .footer-note {
+      font-size: 11px;
+      color: #888780;
+      text-align: center;
+      margin-top: 20px;
+    }
+
+    input[name="next"] { display: none; }
+  </style>
+</head>
+<body>
+
+<div class="login-card">
+  <div class="logo">⬡ Packet<span>Analyzer</span></div>
+  <div class="subtitle">Sign in to your account</div>
+
+  {{if .Error}}
+  <div class="error-msg">{{.Error}}</div>
+  {{end}}
+
+  <form method="POST" action="/auth/login">
+    <input type="hidden" name="next" value="{{.Next}}">
+
+    <div class="field">
+      <label for="username">Username</label>
+      <input id="username" name="username" type="text"
+             autocomplete="username" autofocus required>
+    </div>
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password"
+             autocomplete="current-password" required>
+    </div>
+
+    <button class="btn-login" type="submit">Sign in</button>
+  </form>
+
+  <div class="footer-note">
+    Contact your administrator if you need an account.
+  </div>
+</div>
+
+</body>
+</html>

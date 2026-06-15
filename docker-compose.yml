@@ -31,10 +31,11 @@ services:
     environment:
       - IFACE=${IFACE:-}        # optional: pin to a specific interface
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      - MOCK_GEO=${MOCK_GEO:-false} 
+      - MOCK_GEO=${MOCK_GEO:-false}
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set} 
 
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8080/ || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8080/login || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 3

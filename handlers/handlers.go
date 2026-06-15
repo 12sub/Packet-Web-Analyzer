@@ -13,12 +13,16 @@ import (
 	"strings"
 	"text/template"
 	"time"
+	"strconv"
+    
 
 	"example.com/packet-analyser/internal/capture"
 	"example.com/packet-analyser/internal/db"
 	"example.com/packet-analyser/internal/export"
 	"example.com/packet-analyser/internal/geo"
 	"example.com/packet-analyser/internal/stats"
+	"example.com/packet-analyser/internal/auth"
+    "example.com/packet-analyser/internal/userstore"
 )
 
 type Handler struct {
@@ -28,35 +32,55 @@ type Handler struct {
 	geo      *geo.Lookup
 	exporter *export.Exporter
 	database *db.DB
+	authSvc  *auth.Service      
+    users    *userstore.Store
 }
 
-func New(store *stats.Store, c *capture.Capturer, g *geo.Lookup, ex *export.Exporter, database *db.DB) *Handler {
+func New(store *stats.Store, c *capture.Capturer, g *geo.Lookup, ex *export.Exporter, database *db.DB, authSvc *auth.Service, users *userstore.Store) *Handler {
 	// FIX: Added the missing '*' to parse all HTML files in the templates directory
 	tmpl := template.Must(template.ParseGlob("templates/*.html"))
-	return &Handler{store: store, capturer: c, geo: g, tmpl: tmpl, exporter: ex, database: database}
+	return &Handler{store: store, capturer: c, geo: g, tmpl: tmpl, exporter: ex, database: database, authSvc: authSvc, users: users}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
-	// FIX: Removed ALL trailing spaces from route patterns. 
-	// Go 1.22+ ServeMux requires exact matches, and trailing spaces break routing.
-	mux.HandleFunc("GET /", h.index)
-	mux.HandleFunc("GET /sse/packets", h.ssePackets)
-	mux.HandleFunc("GET /api/stats", h.apiStats)
-	mux.HandleFunc("GET /api/topips", h.apiTopIPs)
-	mux.HandleFunc("POST /capture/filter", h.setFilter)
-	mux.HandleFunc("GET /api/connections", h.apiConnections)
-	mux.HandleFunc("GET /api/geoips", h.apiGeoIPs)
-	
-	// Export routes
-	mux.HandleFunc("GET /exports", h.exportsPage)
-	mux.HandleFunc("GET /exports/files", h.exportFileList)
-	mux.HandleFunc("POST /exports/start-pcap", h.startPCAP)
-	mux.HandleFunc("POST /exports/stop-pcap", h.stopPCAP)
-	mux.HandleFunc("POST /exports/csv", h.exportCSV)
-	mux.HandleFunc("POST /exports/json", h.exportJSON)
-	mux.HandleFunc("GET /exports/download/{file}", h.download)
-	mux.HandleFunc("POST /exports/delete/{file}", h.deleteFile)
+    // ── Public ───────────────────────────────────────────────────────────────
+    mux.HandleFunc("GET  /login",       h.loginPage)
+    mux.HandleFunc("POST /auth/login",  h.login)
+    mux.HandleFunc("POST /auth/logout", h.logout)
+
+    // ── Middleware shortcuts ──────────────────────────────────────────────────
+    user   := h.authSvc.RequireRole(auth.RoleUser)
+    editor := h.authSvc.RequireRole(auth.RoleEditor)
+    admin  := h.authSvc.RequireRole(auth.RoleAdmin)
+
+    // ── User (view only) ──────────────────────────────────────────────────────
+    mux.Handle("GET /",                   user(http.HandlerFunc(h.index)))
+    mux.Handle("GET /sse/packets",        user(http.HandlerFunc(h.ssePackets)))
+    mux.Handle("GET /api/stats",          user(http.HandlerFunc(h.apiStats)))
+    mux.Handle("GET /api/connections",    user(http.HandlerFunc(h.apiConnections)))
+    mux.Handle("GET /api/geoips",         user(http.HandlerFunc(h.apiGeoIPs)))
+    mux.Handle("GET /api/topips",         user(http.HandlerFunc(h.apiTopIPs)))
+
+    // ── Editor (view + filter) ────────────────────────────────────────────────
+    mux.Handle("POST /capture/filter",    editor(http.HandlerFunc(h.setFilter)))
+
+    // ── Admin (full access) ───────────────────────────────────────────────────
+    mux.Handle("GET  /exports",                    admin(http.HandlerFunc(h.exportsPage)))
+    mux.Handle("GET  /exports/files",              admin(http.HandlerFunc(h.exportFileList)))
+    mux.Handle("POST /exports/start-pcap",         admin(http.HandlerFunc(h.startPCAP)))
+    mux.Handle("POST /exports/stop-pcap",          admin(http.HandlerFunc(h.stopPCAP)))
+    mux.Handle("POST /exports/csv",                admin(http.HandlerFunc(h.exportCSV)))
+    mux.Handle("POST /exports/json",               admin(http.HandlerFunc(h.exportJSON)))
+    mux.Handle("GET  /exports/download/{file}",    admin(http.HandlerFunc(h.download)))
+    mux.Handle("POST /exports/delete/{file}",      admin(http.HandlerFunc(h.deleteFile)))
+    mux.Handle("GET  /admin",                      admin(http.HandlerFunc(h.adminPage)))
+    mux.Handle("GET  /admin/users",                admin(http.HandlerFunc(h.adminUserList)))
+    mux.Handle("POST /admin/users/create",         admin(http.HandlerFunc(h.adminCreateUser)))
+    mux.Handle("POST /admin/users/{id}/role",      admin(http.HandlerFunc(h.adminChangeRole)))
+    mux.Handle("POST /admin/users/{id}/delete",    admin(http.HandlerFunc(h.adminDeleteUser)))
+    mux.Handle("POST /admin/users/{id}/password",  admin(http.HandlerFunc(h.adminResetPassword)))
 }
+
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 	data := map[string]string{"ActiveFilter": h.capturer.ActiveFilter()}
@@ -339,6 +363,183 @@ func (h *Handler) deleteFile(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("file")
 	export.DeleteFile(name)
 	h.exportFileList(w, r)
+}
+
+func (h *Handler) loginPage(w http.ResponseWriter, r *http.Request) {
+    // already logged in → skip login page
+    if claims, err := h.authSvc.TokenFromRequest(r); err == nil && claims != nil {
+        http.Redirect(w, r, "/", http.StatusSeeOther)
+        return
+    }
+    h.tmpl.ExecuteTemplate(w, "login.html", map[string]any{
+        "Error": r.URL.Query().Get("error"),
+        "Next":  r.URL.Query().Get("next"),
+    })
+}
+
+func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
+    username := strings.TrimSpace(r.FormValue("username"))
+    password := r.FormValue("password")
+    next     := r.FormValue("next")
+    if next == "" { next = "/" }
+
+    user, err := h.users.GetByUsername(username)
+    if err != nil || !h.authSvc.CheckPassword(user.PasswordHash, password) {
+        http.Redirect(w, r,
+            "/login?error=Invalid+username+or+password&next="+next,
+            http.StatusSeeOther)
+        return
+    }
+    token, err := h.authSvc.IssueToken(user.ID, user.Username, user.Role)
+    if err != nil { http.Error(w, "token error", 500); return }
+
+    h.authSvc.SetCookie(w, token)
+    http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
+func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+    h.authSvc.ClearCookie(w)
+    http.Redirect(w, r, "/login", http.StatusSeeOther)
+}
+
+func (h *Handler) adminPage(w http.ResponseWriter, r *http.Request) {
+    claims := auth.ClaimsFromContext(r.Context())
+    h.tmpl.ExecuteTemplate(w, "admin.html", map[string]any{
+        "CurrentUser": claims,
+    })
+}
+
+func (h *Handler) adminUserList(w http.ResponseWriter, r *http.Request) {
+    claims := auth.ClaimsFromContext(r.Context())
+    users, err := h.users.List()
+    if err != nil { http.Error(w, "could not list users", 500); return }
+
+    w.Header().Set("Content-Type", "text/html")
+    for _, u := range users {
+        isSelf := u.ID == claims.UserID
+        selfTag := ""
+        if isSelf { selfTag = `<span class="self-tag">you</span>` }
+
+        fmt.Fprintf(w, `
+        <tr>
+          <td class="mono">%d</td>
+          <td>%s %s</td>
+          <td>
+            <select class="role-select"
+              name="role"
+              hx-post="/admin/users/%d/role"
+              hx-trigger="change"
+              hx-target="#user-list"
+              hx-swap="innerHTML"
+              %s>
+              <option value="user"   %s>User</option>
+              <option value="editor" %s>Editor</option>
+              <option value="admin"  %s>Admin</option>
+            </select>
+          </td>
+          <td class="mono text-muted">%s</td>
+          <td class="actions">
+            <button class="btn-sm btn-warn"
+              hx-post="/admin/users/%d/password"
+              hx-prompt="Enter new password (min 8 chars):"
+              hx-target="#admin-msg"
+              hx-swap="innerHTML">Reset pw</button>
+            %s
+          </td>
+        </tr>`,
+            u.ID, u.Username, selfTag,
+            u.ID,
+            ifStr(isSelf, "disabled", ""),
+            ifStr(u.Role == "user",   "selected", ""),
+            ifStr(u.Role == "editor", "selected", ""),
+            ifStr(u.Role == "admin",  "selected", ""),
+            u.CreatedAt.Format("2006-01-02 15:04"),
+            u.ID,
+            deleteBtn(u.ID, u.Username, isSelf),
+        )
+    }
+}
+
+func (h *Handler) adminCreateUser(w http.ResponseWriter, r *http.Request) {
+    username := strings.TrimSpace(r.FormValue("username"))
+    password := r.FormValue("password")
+    role     := r.FormValue("role")
+
+    switch {
+    case username == "" || password == "":
+        fmt.Fprint(w, `<span class="msg-err">Username and password are required</span>`)
+        return
+    case len(password) < 8:
+        fmt.Fprint(w, `<span class="msg-err">Password must be at least 8 characters</span>`)
+        return
+    case role != auth.RoleUser && role != auth.RoleEditor && role != auth.RoleAdmin:
+        fmt.Fprint(w, `<span class="msg-err">Invalid role</span>`)
+        return
+    }
+
+    hash, err := h.authSvc.HashPassword(password)
+    if err != nil { fmt.Fprint(w, `<span class="msg-err">Internal error</span>`); return }
+
+    if _, err := h.users.Create(username, hash, role); err != nil {
+        fmt.Fprintf(w, `<span class="msg-err">Could not create user: username may already exist</span>`)
+        return
+    }
+    fmt.Fprintf(w, `<span class="msg-ok">✓ User "%s" created as %s</span>`, username, role)
+}
+
+func (h *Handler) adminChangeRole(w http.ResponseWriter, r *http.Request) {
+    claims := auth.ClaimsFromContext(r.Context())
+    id, _  := strconv.ParseInt(r.PathValue("id"), 10, 64)
+    role   := r.FormValue("role")
+
+    if id == claims.UserID {
+        http.Error(w, "cannot change your own role", http.StatusBadRequest); return
+    }
+    if err := h.users.UpdateRole(id, role); err != nil {
+        http.Error(w, err.Error(), 500); return
+    }
+    h.adminUserList(w, r)
+}
+
+func (h *Handler) adminDeleteUser(w http.ResponseWriter, r *http.Request) {
+    claims := auth.ClaimsFromContext(r.Context())
+    id, _  := strconv.ParseInt(r.PathValue("id"), 10, 64)
+
+    if id == claims.UserID {
+        http.Error(w, "cannot delete yourself", http.StatusBadRequest); return
+    }
+    h.users.Delete(id)
+    h.adminUserList(w, r)
+}
+
+func (h *Handler) adminResetPassword(w http.ResponseWriter, r *http.Request) {
+    id      := r.PathValue("id")
+    newPass := r.Header.Get("HX-Prompt")
+    idInt, _ := strconv.ParseInt(id, 10, 64)
+
+    if len(newPass) < 8 {
+        fmt.Fprint(w, `<span class="msg-err">Password must be at least 8 characters</span>`)
+        return
+    }
+    hash, _ := h.authSvc.HashPassword(newPass)
+    h.users.UpdatePassword(idInt, hash)
+    fmt.Fprint(w, `<span class="msg-ok">✓ Password updated</span>`)
+}
+
+// helpers
+func ifStr(cond bool, a, b string) string {
+    if cond { return a }
+    return b
+}
+
+func deleteBtn(id int64, username string, isSelf bool) string {
+    if isSelf { return "" }
+    return fmt.Sprintf(`
+        <button class="btn-sm btn-danger"
+          hx-post="/admin/users/%d/delete"
+          hx-confirm="Delete user '%s'? This cannot be undone."
+          hx-target="#user-list"
+          hx-swap="innerHTML">Delete</button>`, id, username)
 }
 
 func humanSize(b int64) string {
