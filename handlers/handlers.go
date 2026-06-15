@@ -37,9 +37,13 @@ type Handler struct {
 }
 
 func New(store *stats.Store, c *capture.Capturer, g *geo.Lookup, ex *export.Exporter, database *db.DB, authSvc *auth.Service, users *userstore.Store) *Handler {
-	// FIX: Added the missing '*' to parse all HTML files in the templates directory
+	// FIX: Added the missing '*' to parse ALL html files in the templates directory
 	tmpl := template.Must(template.ParseGlob("templates/*.html"))
-	return &Handler{store: store, capturer: c, geo: g, tmpl: tmpl, exporter: ex, database: database, authSvc: authSvc, users: users}
+	
+	return &Handler{
+		store: store, capturer: c, geo: g, tmpl: tmpl, 
+		exporter: ex, database: database, authSvc: authSvc, users: users,
+	}
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
