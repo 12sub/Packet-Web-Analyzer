@@ -23,6 +23,7 @@ import (
 	"example.com/packet-analyser/internal/stats"
 	"example.com/packet-analyser/internal/auth"
     "example.com/packet-analyser/internal/userstore"
+	"example.com/packet-analyser/internal/audit"
 )
 
 type Handler struct {
@@ -34,15 +35,17 @@ type Handler struct {
 	database *db.DB
 	authSvc  *auth.Service      
     users    *userstore.Store
+	audit    *audit.Store
 }
 
-func New(store *stats.Store, c *capture.Capturer, g *geo.Lookup, ex *export.Exporter, database *db.DB, authSvc *auth.Service, users *userstore.Store) *Handler {
+func New(store *stats.Store, c *capture.Capturer, g *geo.Lookup, ex *export.Exporter, database *db.DB, authSvc *auth.Service, users *userstore.Store, audit *audit.Store) *Handler {
 	// FIX: Added the missing '*' to parse ALL html files in the templates directory
 	tmpl := template.Must(template.ParseGlob("templates/*.html"))
 	
 	return &Handler{
 		store: store, capturer: c, geo: g, tmpl: tmpl, 
 		exporter: ex, database: database, authSvc: authSvc, users: users,
+		audit: audit,
 	}
 }
 
@@ -83,6 +86,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
     mux.Handle("POST /admin/users/{id}/role",      admin(http.HandlerFunc(h.adminChangeRole)))
     mux.Handle("POST /admin/users/{id}/delete",    admin(http.HandlerFunc(h.adminDeleteUser)))
     mux.Handle("POST /admin/users/{id}/password",  admin(http.HandlerFunc(h.adminResetPassword)))
+	mux.Handle("GET /admin/audit", admin(http.HandlerFunc(h.auditPage)))
 }
 
 
@@ -92,24 +96,39 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) setFilter(w http.ResponseWriter, r *http.Request) {
-	expr := strings.TrimSpace(r.FormValue("filter"))
-	if err := h.capturer.SetFilter(expr); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w,
-			`<span id="filter-status" class="filter-err">✗ %s</span>`,
-			template.HTMLEscapeString(err.Error()),
-		)
-		return
-	}
+    expr := strings.TrimSpace(r.FormValue("filter"))
+    claims := auth.ClaimsFromContext(r.Context())
 
-	label := "filter cleared"
-	if expr != "" {
-		label = fmt.Sprintf("filter applied: %s", expr)
-	}
-	fmt.Fprintf(w,
-		`<span id="filter-status" class="filter-ok">✓ %s</span>`,
-		template.HTMLEscapeString(label),
-	)
+    if err := h.capturer.SetFilter(expr); err != nil {
+        if claims != nil {
+            h.audit.Log(audit.Event{
+                Timestamp: time.Now(),
+                UserID:    claims.UserID,
+                Username:  claims.Username,
+                Action:    "SET_FILTER_FAILURE",
+                Details:   fmt.Sprintf("Filter: %s | Error: %s", expr, err.Error()),
+                IPAddress: r.RemoteAddr,
+            })
+        }
+        w.WriteHeader(http.StatusBadRequest)
+        fmt.Fprintf(w, `<span id="filter-status" class="filter-err">✗ %s</span>`, template.HTMLEscapeString(err.Error()))
+        return
+    }
+
+    if claims != nil {
+        h.audit.Log(audit.Event{
+            Timestamp: time.Now(),
+            UserID:    claims.UserID,
+            Username:  claims.Username,
+            Action:    "SET_FILTER_SUCCESS",
+            Details:   expr,
+            IPAddress: r.RemoteAddr,
+        })
+    }
+
+    label := "filter cleared"
+    if expr != "" { label = fmt.Sprintf("filter applied: %s", expr) }
+    fmt.Fprintf(w, `<span id="filter-status" class="filter-ok">✓ %s</span>`, template.HTMLEscapeString(label))
 }
 
 func (h *Handler) ssePackets(w http.ResponseWriter, r *http.Request) {
@@ -189,6 +208,22 @@ func SecondTicker(store *stats.Store) {
 	for range t.C {
 		store.TickSecond()
 	}
+}
+
+// Add this handler to display the logs
+func (h *Handler) auditPage(w http.ResponseWriter, r *http.Request) {
+    claims := auth.ClaimsFromContext(r.Context())
+    events, err := h.audit.Recent(100)
+    if err != nil {
+        http.Error(w, "Failed to load audit logs", http.StatusInternalServerError)
+        return
+    }
+    
+    data := map[string]any{
+        "CurrentUser": claims,
+        "Events":      events,
+    }
+    h.tmpl.ExecuteTemplate(w, "audit.html", data)
 }
 
 func Log(next http.Handler) http.Handler {
@@ -389,6 +424,13 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 
     user, err := h.users.GetByUsername(username)
     if err != nil || !h.authSvc.CheckPassword(user.PasswordHash, password) {
+		 h.audit.Log(audit.Event{
+            Timestamp: time.Now(),
+            Username:  username,
+            Action:    "LOGIN_FAILURE",
+            Details:   "Invalid credentials",
+            IPAddress: r.RemoteAddr,
+        })
         http.Redirect(w, r,
             "/login?error=Invalid+username+or+password&next="+next,
             http.StatusSeeOther)
@@ -398,10 +440,28 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
     if err != nil { http.Error(w, "token error", 500); return }
 
     h.authSvc.SetCookie(w, token)
+    h.audit.Log(audit.Event{
+        Timestamp: time.Now(),
+        Username:  user.Username,
+        Action:    "LOGIN_SUCCESS",
+        Details:   "User logged in successfully",
+        IPAddress: r.RemoteAddr,
+    })
+	h.authSvc.SetCookie(w, token)
     http.Redirect(w, r, next, http.StatusSeeOther)
 }
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
+    claims := auth.ClaimsFromContext(r.Context())
+    if claims != nil {
+        h.audit.Log(audit.Event{
+            Timestamp: time.Now(),
+            UserID:    claims.UserID,
+            Username:  claims.Username,
+            Action:    "LOGOUT",
+            IPAddress: r.RemoteAddr,
+        })
+    }
     h.authSvc.ClearCookie(w)
     http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
@@ -488,6 +548,15 @@ func (h *Handler) adminCreateUser(w http.ResponseWriter, r *http.Request) {
         fmt.Fprintf(w, `<span class="msg-err">Could not create user: username may already exist</span>`)
         return
     }
+	claims := auth.ClaimsFromContext(r.Context())
+    h.audit.Log(audit.Event{
+        Timestamp: time.Now(),
+        UserID:    claims.UserID,
+        Username:  claims.Username,
+        Action:    "CREATE_USER",
+        Details:   fmt.Sprintf("Created user '%s' with role '%s'", username, role),
+        IPAddress: r.RemoteAddr,
+    })
     fmt.Fprintf(w, `<span class="msg-ok">✓ User "%s" created as %s</span>`, username, role)
 }
 

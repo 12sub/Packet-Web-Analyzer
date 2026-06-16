@@ -13,6 +13,7 @@ import (
 	"example.com/packet-analyser/internal/geo"
 	"example.com/packet-analyser/internal/stats"
 	"example.com/packet-analyser/internal/userstore"
+	"example.com/packet-analyser/internal/audit"
 )
 
 func main() {
@@ -66,9 +67,15 @@ func main() {
 			log.Println("[auth] created default admin user: username='admin', password='admin123'")
 		}
 	}
+	// ── NEW: Initialize Audit Store ─────────────────────────────────────────
+    auditStore, err := audit.Open("./exports/audit.db")
+    if err != nil {
+        log.Fatal("[audit] ", err)
+    }
+    defer auditStore.Close()
 
 	// ── Wire everything together ────────────────────────────────────────────
-	h := handlers.New(store, cap, g, ex, database, authSvc, users)
+	h := handlers.New(store, cap, g, ex, database, authSvc, users, auditStore)
 	
 	mux := http.NewServeMux()
 	h.Register(mux)

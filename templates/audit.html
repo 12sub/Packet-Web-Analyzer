@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audit Logs — Packet Analyzer</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, sans-serif; background: #f5f5f3; color: #1a1a18; }
+        header {
+            display: flex; align-items: center; gap: 16px;
+            padding: 12px 24px; background: #fff;
+            border-bottom: 0.5px solid #d3d1c7; flex-wrap: wrap;
+        }
+        header h1 { font-size: 15px; font-weight: 500; flex: 1; }
+        .nav-link {
+            font-size: 13px; color: #5f5e5a; text-decoration: none;
+            padding: 4px 10px; border-radius: 6px; border: 0.5px solid #d3d1c7;
+        }
+        .nav-link:hover { background: #f1efe8; }
+        .user-badge {
+            font-size: 12px; padding: 3px 10px; border-radius: 6px;
+            background: #f1efe8; border: 0.5px solid #d3d1c7; color: #5f5e5a;
+        }
+        .role-pill {
+            font-size: 10px; padding: 1px 7px; border-radius: 4px;
+            font-weight: 500; display: inline-block; margin-left: 4px;
+        }
+        .role-pill.admin { background: #E6F1FB; color: #0C447C; }
+        main { max-width: 1100px; margin: 0 auto; padding: 24px; }
+        .section {
+            background: #fff; border: 0.5px solid #d3d1c7;
+            border-radius: 10px; padding: 20px 24px; margin-bottom: 16px;
+        }
+        .section-title { font-size: 14px; font-weight: 500; margin-bottom: 16px; }
+        .audit-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .audit-table th {
+            font-size: 11px; font-weight: 500; color: #888780;
+            text-align: left; padding: 0 10px 10px; text-transform: uppercase;
+        }
+        .audit-table td {
+            padding: 10px; border-top: 0.5px solid #e8e6e0; vertical-align: top;
+        }
+        .audit-table tr:hover td { background: #fafaf8; }
+        .action-badge {
+            font-size: 11px; padding: 2px 8px; border-radius: 4px;
+            font-weight: 500; display: inline-block;
+        }
+        .action-success { background: #EAF3DE; color: #3B6D11; }
+        .action-failure { background: #FEECEC; color: #A32D2D; }
+        .action-info { background: #E6F1FB; color: #0C447C; }
+        .mono { font-family: monospace; font-size: 12px; }
+        .text-muted { color: #888780; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>⬡ Packet Analyzer — Audit Logs</h1>
+        <span class="user-badge">
+            {{.CurrentUser.Username}}
+            <span class="role-pill admin">admin</span>
+        </span>
+        <a class="nav-link" href="/admin">← Admin</a>
+        <a class="nav-link" href="/">Dashboard</a>
+        <form method="POST" action="/auth/logout" style="display:inline">
+            <button class="nav-link" type="submit" style="background:none; border:none; cursor:pointer;">Sign out</button>
+        </form>
+    </header>
+
+    <main>
+        <div class="section">
+            <div class="section-title">Recent Activity (Last 100 Events)</div>
+            
+            {{if .Events}}
+            <table class="audit-table">
+                <thead>
+                    <tr>
+                        <th style="width: 160px;">Timestamp</th>
+                        <th style="width: 100px;">User</th>
+                        <th style="width: 140px;">Action</th>
+                        <th>Details</th>
+                        <th style="width: 120px;">IP Address</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Events}}
+                    <tr>
+                        <td class="mono">{{.Timestamp.Format "2006-01-02 15:04:05"}}</td>
+                        <td>{{if .Username}}{{.Username}}{{else}}<span class="text-muted">System</span>{{end}}</td>
+                        <td>
+                            {{if or (eq .Action "LOGIN_SUCCESS") (eq .Action "SET_FILTER_SUCCESS") (eq .Action "CREATE_USER")}}
+                                <span class="action-badge action-success">{{.Action}}</span>
+                            {{else if or (eq .Action "LOGIN_FAILURE") (eq .Action "SET_FILTER_FAILURE")}}
+                                <span class="action-badge action-failure">{{.Action}}</span>
+                            {{else}}
+                                <span class="action-badge action-info">{{.Action}}</span>
+                            {{end}}
+                        </td>
+                        <td class="mono">{{if .Details}}{{.Details}}{{else}}<span class="text-muted">-</span>{{end}}</td>
+                        <td class="mono">{{.IPAddress}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{else}}
+            <p class="text-muted" style="text-align: center; padding: 20px;">No audit logs found.</p>
+            {{end}}
+        </div>
+    </main>
+</body>
+</html>
