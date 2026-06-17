@@ -61,6 +61,61 @@
     /* ── Layout ── */
     main { padding: 16px 20px; max-width: 1200px; margin: 0 auto; }
 
+    /* Layout Container */
+    .app-layout {
+        display: flex;
+        flex: 1;
+        min-height: 0; /* Prevents flex items from overflowing */
+    }
+
+    /* Sidebar Styles */
+    .sidebar {
+        width: 240px;
+        background: #fff;
+        border-right: 0.5px solid #d3d1c7;
+        padding: 24px 0;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    .sidebar-section-title {
+        font-size: 11px;
+        font-weight: 500;
+        color: #888780;
+        text-transform: uppercase;
+        padding: 0 20px 12px;
+        letter-spacing: 0.5px;
+    }
+    .sidebar-link {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 20px;
+        font-size: 14px;
+        color: #1a1a18;
+        text-decoration: none;
+        transition: background 0.15s, border-color 0.15s;
+        border-left: 3px solid transparent;
+    }
+    .sidebar-link:hover {
+        background: #f1efe8;
+        color: #0C447C;
+    }
+    .sidebar-link.active {
+        background: #f1efe8;
+        font-weight: 500;
+        border-left: 3px solid #0C447C;
+        color: #0C447C;
+    }
+
+    /* Main Content Area */
+    .main-content {
+        flex: 1;
+        padding: 24px;
+        overflow-y: auto;
+        background: #f5f5f3;
+    }
+
     /* ── Summary cards ── */
     .cards {
       display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -129,6 +184,42 @@
 <header>
   <h1>⬡ Packet Analyzer</h1>
   <span class="badge"><span class="dot"></span> Live capture</span>
+
+  <!-- 2. NEW: The Flex Layout Container -->
+    <div class="app-layout">
+        
+        <!-- 3. NEW: The Sidebar -->
+        <aside class="sidebar">
+            <!-- 
+              Only render this block if the user is logged in AND their role is "admin".
+              Users and Editors will see an empty sidebar.
+            -->
+            {{if and .CurrentUser (eq .CurrentUser.Role "admin")}}
+                <div class="sidebar-section-title">Administration</div>
+                
+                <a href="/admin/export" class="sidebar-link">
+                    <span>📦</span> Export Data
+                </a>
+                <a href="/admin/users" class="sidebar-link">
+                    <span>👥</span> Manage Users
+                </a>
+                <a href="/admin/audit" class="sidebar-link active">
+                    <span>📜</span> Audit Logs
+                </a>
+            {{end}}
+        </aside>
+
+        <!-- 4. Your existing Main Content -->
+        <main class="main-content">
+            <!-- 
+              MOVE ALL YOUR EXISTING INDEX CONTENT HERE.
+              (e.g., your stats cards, packet tables, BPF filter inputs, etc.)
+            -->
+            
+            <h2 style="font-size: 18px; font-weight: 500; margin-bottom: 20px;">Dashboard</h2>
+            <!-- ... rest of your original index.html body ... -->
+        </main>
+    </div>  
 
   <!-- BPF filter -->
   <div class="filter-bar">

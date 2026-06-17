@@ -91,8 +91,19 @@ func (h *Handler) Register(mux *http.ServeMux) {
 
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
-	data := map[string]string{"ActiveFilter": h.capturer.ActiveFilter()}
-	h.tmpl.ExecuteTemplate(w, "index.html", data)
+	// Extract the user from the context (assuming your auth middleware sets it)
+    claims := auth.ClaimsFromContext(r.Context())
+    
+    // Prepare the data map for the template
+    data := map[string]any{
+        "CurrentUser": claims, // This is crucial for the sidebar logic!
+        // ... add your other data like Stats, Packets, etc. ...
+    }
+
+    // Execute the template
+    if err := h.tmpl.ExecuteTemplate(w, "index.html", data); err != nil {
+        http.Error(w, "Template error", http.StatusInternalServerError)
+    }
 }
 
 func (h *Handler) setFilter(w http.ResponseWriter, r *http.Request) {
