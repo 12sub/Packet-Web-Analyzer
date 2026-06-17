@@ -177,6 +177,61 @@
       .mid, .bottom, .analytics { grid-template-columns: 1fr; }
       .analytics .geo-panel { grid-column: 1; }
     }
+      /* Sidebar Toggle Button */
+  .sidebar-toggle {
+      position: absolute;
+      top: 20px;
+      right: -16px;
+      width: 32px;
+      height: 32px;
+      background: #fff;
+      border: 0.5px solid #d3d1c7;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #5f5e5a;
+      transition: all 0.2s;
+      z-index: 10;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+  .sidebar-toggle:hover {
+      background: #f1efe8;
+      color: #0C447C;
+  }
+
+  /* Collapsed State */
+  .sidebar.collapsed {
+      width: 60px;
+  }
+  .sidebar.collapsed .sidebar-section-title {
+      display: none;
+  }
+  .sidebar.collapsed .sidebar-link {
+      justify-content: center;
+      padding: 12px;
+      border-left: none;
+  }
+  .sidebar.collapsed .sidebar-link span:last-child {
+      display: none;
+  }
+  .sidebar.collapsed .sidebar-link span:first-child {
+      font-size: 18px;
+  }
+
+  /* Smooth Transitions */
+  .sidebar, .main-content {
+      transition: all 0.3s ease;
+  }
+
+  /* Responsive: Hide toggle on mobile */
+  @media (max-width: 768px) {
+      .sidebar-toggle {
+          display: none;
+      }
+  }
   </style>
 </head>
 <body>
@@ -200,43 +255,46 @@
   </div>
 </header>
 
-<main>
+<!-- 2. NEW: The Flex Layout Container -->
+  <div class="app-layout">
+      
+      <!-- 3. NEW: The Sidebar -->
+      <aside class="sidebar">
+          <!-- 
+            Only render this block if the user is logged in AND their role is "admin".
+            Users and Editors will see an empty sidebar.
+          -->
+            <button class="sidebar-toggle" id="sidebarToggle" title="Toggle Sidebar">
+                <span id="toggleIcon">◀</span>
+            </button>
+          {{if and .CurrentUser (eq .CurrentUser.Role "admin")}}
+              <div class="sidebar-section-title">Administration</div>
+              
+              <a href="/exports" class="sidebar-link">
+                  <span>📦</span> Export Data
+              </a>
+              <a href="/admin" class="sidebar-link">
+                  <span>👥</span> Manage Users
+              </a>
+              <a href="/admin/audit" class="sidebar-link active">
+                  <span>📜</span> Audit Logs
+              </a>
+          {{end}}
+      </aside>
 
-  <!-- 2. NEW: The Flex Layout Container -->
-    <div class="app-layout">
-        
-        <!-- 3. NEW: The Sidebar -->
-        <aside class="sidebar">
-            <!-- 
-              Only render this block if the user is logged in AND their role is "admin".
-              Users and Editors will see an empty sidebar.
-            -->
-            {{if and .CurrentUser (eq .CurrentUser.Role "admin")}}
-                <div class="sidebar-section-title">Administration</div>
-                
-                <a href="/exports" class="sidebar-link">
-                    <span>📦</span> Export Data
-                </a>
-                <a href="/admin" class="sidebar-link">
-                    <span>👥</span> Manage Users
-                </a>
-                <a href="/admin/audit" class="sidebar-link active">
-                    <span>📜</span> Audit Logs
-                </a>
-            {{end}}
-        </aside>
+      <!-- 4. Your existing Main Content -->
+      <main class="main-content">
+          <!-- 
+            MOVE ALL YOUR EXISTING INDEX CONTENT HERE.
+            (e.g., your stats cards, packet tables, BPF filter inputs, etc.)
+          -->
+          
+          <h2 style="font-size: 18px; font-weight: 500; margin-bottom: 20px;">Dashboard</h2>
+          <!-- ... rest of your original index.html body ... -->
+      </main>
+  </div> 
 
-        <!-- 4. Your existing Main Content -->
-        <main class="main-content">
-            <!-- 
-              MOVE ALL YOUR EXISTING INDEX CONTENT HERE.
-              (e.g., your stats cards, packet tables, BPF filter inputs, etc.)
-            -->
-            
-            <h2 style="font-size: 18px; font-weight: 500; margin-bottom: 20px;">Dashboard</h2>
-            <!-- ... rest of your original index.html body ... -->
-        </main>
-    </div>  
+<main> 
 
   <!-- ── Summary cards (polled every 2s via HTMX) ── -->
   <div class="cards"
@@ -592,6 +650,31 @@ async function pollGeoIPs() {
 }
 pollGeoIPs();
 setInterval(pollGeoIPs, 5000);
+
+(function() {
+            const sidebar = document.getElementById('sidebar');
+            const toggleBtn = document.getElementById('sidebarToggle');
+            const toggleIcon = document.getElementById('toggleIcon');
+            
+            // Load saved state from localStorage
+            const savedState = localStorage.getItem('sidebarCollapsed');
+            if (savedState === 'true') {
+                sidebar.classList.add('collapsed');
+                toggleIcon.textContent = '▶';
+            }
+            
+            // Toggle handler
+            toggleBtn.addEventListener('click', function() {
+                sidebar.classList.toggle('collapsed');
+                const isCollapsed = sidebar.classList.contains('collapsed');
+                
+                // Update icon
+                toggleIcon.textContent = isCollapsed ? '▶' : '◀';
+                
+                // Save state to localStorage
+                localStorage.setItem('sidebarCollapsed', isCollapsed);
+            });
+        })();
 </script>
 </body>
 </html>
