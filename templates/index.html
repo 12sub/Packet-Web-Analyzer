@@ -185,6 +185,23 @@
   <h1>⬡ Packet Analyzer</h1>
   <span class="badge"><span class="dot"></span> Live capture</span>
 
+  <!-- BPF filter -->
+  <div class="filter-bar">
+    <input  id="bpf-input"
+            type="text"
+            name="filter"
+            placeholder="BPF filter e.g. tcp port 443"
+            value="{{.ActiveFilter}}"
+            onkeydown="if(event.key==='Enter') applyFilter()"
+    />
+    <button onclick="applyFilter()">Apply</button>
+    <button onclick="clearFilter()">Clear</button>
+    <span id="filter-status"></span>
+  </div>
+</header>
+
+<main>
+
   <!-- 2. NEW: The Flex Layout Container -->
     <div class="app-layout">
         
@@ -220,23 +237,6 @@
             <!-- ... rest of your original index.html body ... -->
         </main>
     </div>  
-
-  <!-- BPF filter -->
-  <div class="filter-bar">
-    <input  id="bpf-input"
-            type="text"
-            name="filter"
-            placeholder="BPF filter e.g. tcp port 443"
-            value="{{.ActiveFilter}}"
-            onkeydown="if(event.key==='Enter') applyFilter()"
-    />
-    <button onclick="applyFilter()">Apply</button>
-    <button onclick="clearFilter()">Clear</button>
-    <span id="filter-status"></span>
-  </div>
-</header>
-
-<main>
 
   <!-- ── Summary cards (polled every 2s via HTMX) ── -->
   <div class="cards"
