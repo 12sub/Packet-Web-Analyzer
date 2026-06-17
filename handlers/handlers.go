@@ -24,6 +24,7 @@ import (
 	"example.com/packet-analyser/internal/auth"
     "example.com/packet-analyser/internal/userstore"
 	"example.com/packet-analyser/internal/audit"
+    "example.com/packet-analyser/internal/metrics"
 )
 
 type Handler struct {
@@ -435,6 +436,8 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 
     user, err := h.users.GetByUsername(username)
     if err != nil || !h.authSvc.CheckPassword(user.PasswordHash, password) {
+        // --- NEW: Track failed login ---
+        metrics.LoginAttempts.WithLabelValues("failure").Inc()
 		 h.audit.Log(audit.Event{
             Timestamp: time.Now(),
             Username:  username,
@@ -451,6 +454,8 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
     if err != nil { http.Error(w, "token error", 500); return }
 
     h.authSvc.SetCookie(w, token)
+    // --- NEW: Track successful login ---
+    metrics.LoginAttempts.WithLabelValues("success").Inc()
     h.audit.Log(audit.Event{
         Timestamp: time.Now(),
         Username:  user.Username,

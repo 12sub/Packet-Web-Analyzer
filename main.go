@@ -14,6 +14,7 @@ import (
 	"example.com/packet-analyser/internal/stats"
 	"example.com/packet-analyser/internal/userstore"
 	"example.com/packet-analyser/internal/audit"
+	"example.com/packet-analyser/internal/metrics" 
 )
 
 func main() {
@@ -79,6 +80,12 @@ func main() {
 	
 	mux := http.NewServeMux()
 	h.Register(mux)
+
+	mux.Handle("GET /metrics", promhttp.Handler())
+
+    // ── NEW: Wrap the mux with Prometheus HTTP Middleware ───────────────────
+    // This tracks request counts and durations for ALL routes
+    finalHandler := metrics.Middleware(mux)
 
 	log.Println("listening on :8080")
 	if err := http.ListenAndServe(":8080", handlers.Log(mux)); err != nil {

@@ -9,6 +9,7 @@ import (
     "time"
 
     "example.com/packet-analyser/internal/stats"
+    "example.com/packet-analyser/internal/metrics"
 
     "github.com/google/gopacket"
     "github.com/google/gopacket/layers"
@@ -90,6 +91,11 @@ func (c *Capturer) runReal(store *stats.Store, iface string) {
         c.runMock(store)
         return
     }
+
+    metrics.ActiveCaptures.Inc()
+	defer metrics.ActiveCaptures.Dec()
+
+
     c.mu.Lock()
     c.handle = handle
     c.mu.Unlock()
@@ -97,8 +103,16 @@ func (c *Capturer) runReal(store *stats.Store, iface string) {
 
     src := gopacket.NewPacketSource(handle, handle.LinkType())
     for pkt := range src.Packets() {
+        metrics.PacketsCaptured.Inc()
+		metrics.BytesCaptured.Add(float64(len(pkt.Data())))
+
         store.Add(parsePacket(pkt))
     }
+
+    // --- NEW: Record dropped packets when the capture loop exits ---
+	if netStats, err := handle.Stats(); err == nil {
+		metrics.PacketsDropped.Add(float64(netStats.PacketsDropped))
+	}
 }
 
 func parsePacket(pkt gopacket.Packet) stats.Packet {
@@ -120,11 +134,17 @@ func parsePacket(pkt gopacket.Packet) stats.Packet {
 }
 
 func (c *Capturer) runMock(store *stats.Store) {
+    // --- NEW: Track active mock captures ---
+	metrics.ActiveCaptures.Inc()
+	defer metrics.ActiveCaptures.Dec()
+
     subnets := []string{"10.0.1", "192.168.0", "172.16.4", "10.0.2"}
     r := rand.New(rand.NewSource(time.Now().UnixNano()))
     tick := time.NewTicker(150 * time.Millisecond)
     for range tick.C {
         for i := 0; i < r.Intn(4)+1; i++ {
+            metrics.PacketsCaptured.Inc()
+			metrics.BytesCaptured.Add(float64(pktSize))
             store.Add(stats.Packet{
                 SrcIP:   fmt.Sprintf("%s.%d", subnets[r.Intn(len(subnets))], r.Intn(253)+1),
                 DstIP:   fmt.Sprintf("%s.%d", subnets[r.Intn(len(subnets))], r.Intn(253)+1),
