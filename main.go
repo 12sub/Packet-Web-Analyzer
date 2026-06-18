@@ -15,6 +15,7 @@ import (
 	"example.com/packet-analyser/internal/userstore"
 	"example.com/packet-analyser/internal/audit"
 	"example.com/packet-analyser/internal/metrics" 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -88,7 +89,7 @@ func main() {
     finalHandler := metrics.Middleware(mux)
 
 	log.Println("listening on :8080")
-	if err := http.ListenAndServe(":8080", handlers.Log(mux)); err != nil {
+	if err := http.ListenAndServe(":8080", finalHandler); err != nil {
 		log.Fatal(err)
 	}
 }

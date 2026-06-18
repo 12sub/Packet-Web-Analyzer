@@ -143,13 +143,14 @@ func (c *Capturer) runMock(store *stats.Store) {
     tick := time.NewTicker(150 * time.Millisecond)
     for range tick.C {
         for i := 0; i < r.Intn(4)+1; i++ {
+            pktSize := r.Intn(1440) + 40
             metrics.PacketsCaptured.Inc()
 			metrics.BytesCaptured.Add(float64(pktSize))
             store.Add(stats.Packet{
                 SrcIP:   fmt.Sprintf("%s.%d", subnets[r.Intn(len(subnets))], r.Intn(253)+1),
                 DstIP:   fmt.Sprintf("%s.%d", subnets[r.Intn(len(subnets))], r.Intn(253)+1),
                 Proto:   protos[r.Intn(len(protos))],
-                Size:    r.Intn(1440) + 40,
+                Size:    pktSize,
                 Flagged: r.Float32() < 0.04,
                 Time:    time.Now(),
             })

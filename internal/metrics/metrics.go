@@ -88,3 +88,12 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.statusCode = code
 	rw.ResponseWriter.WriteHeader(code)
 }
+
+// --- NEW: Implement http.Flusher to support Server-Sent Events (SSE) ---
+// This passes the Flush() call down to the original ResponseWriter,
+// allowing real-time streaming to work again.
+func (rw *responseWriter) Flush() {
+	if flusher, ok := rw.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
