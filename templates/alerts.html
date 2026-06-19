@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Alert Rules — Packet Analyzer</title>
+    <style>
+        /* Reuse your existing global styles here */
+        body { font-family: system-ui, sans-serif; background: #f5f5f3; color: #1a1a18; margin: 0; }
+        .container { max-width: 1000px; margin: 40px auto; padding: 20px; }
+        .card { background: #fff; border: 0.5px solid #d3d1c7; border-radius: 10px; padding: 24px; margin-bottom: 24px; }
+        h2 { font-size: 18px; margin-top: 0; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        label { font-size: 12px; font-weight: 500; color: #5f5e5a; display: block; margin-bottom: 6px; }
+        input, select { width: 100%; padding: 8px 12px; border: 0.5px solid #d3d1c7; border-radius: 6px; font-size: 14px; box-sizing: border-box; }
+        .btn { padding: 10px 20px; background: #0C447C; color: #fff; border: none; border-radius: 6px; cursor: pointer; font-weight: 500; margin-top: 16px; }
+        .btn-danger { background: #A32D2D; padding: 6px 12px; font-size: 12px; margin-top: 0;}
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 10px; border-bottom: 1px solid #e8e6e0; color: #888780; font-size: 11px; text-transform: uppercase;}
+        td { padding: 12px 10px; border-bottom: 0.5px solid #e8e6e0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🔔 Automated Alert Rules</h2>
+        
+        <div class="card">
+            <h3 style="margin-top:0; font-size: 15px;">Create New Rule</h3>
+            <form method="POST" action="/admin/alerts/create">
+                <div class="form-grid">
+                    <div>
+                        <label>Rule Name</label>
+                        <input type="text" name="name" placeholder="e.g., High Traffic Spike" required>
+                    </div>
+                    <div>
+                        <label>Rule Type</label>
+                        <select name="type" required>
+                            <option value="traffic_spike">Total Traffic Spike (Packets)</option>
+                            <option value="ip_threshold">Specific IP Threshold</option>
+                            <option value="anomaly">Flagged/Anomaly Packets</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Target IP (Only for IP Threshold)</label>
+                        <input type="text" name="target" placeholder="e.g., 192.168.1.50">
+                    </div>
+                    <div>
+                        <label>Webhook URL</label>
+                        <input type="url" name="webhook_url" placeholder="https://hooks.slack.com/..." required>
+                    </div>
+                    <div>
+                        <label>Threshold (Trigger if > this)</label>
+                        <input type="number" name="threshold" value="1000" required>
+                    </div>
+                    <div>
+                        <label>Time Window (Seconds)</label>
+                        <input type="number" name="window_secs" value="60" required>
+                    </div>
+                    <div>
+                        <label>Cooldown (Seconds)</label>
+                        <input type="number" name="cooldown_secs" value="300" placeholder="Min time between alerts">
+                    </div>
+                </div>
+                <button type="submit" class="btn">Save Rule</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h3 style="margin-top:0; font-size: 15px;">Active Rules</h3>
+            {{if .Rules}}
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Type</th>
+                        <th>Condition</th>
+                        <th>Cooldown</th>
+                        <th>Last Triggered</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Rules}}
+                    <tr>
+                        <td><strong>{{.Name}}</strong></td>
+                        <td>{{.Type}}</td>
+                        <td>> {{.Threshold}} in {{.WindowSecs}}s {{if .Target}}<br><small>(IP: {{.Target}})</small>{{end}}</td>
+                        <td>{{.CooldownSecs}}s</td>
+                        <td>{{if .LastTriggered.IsZero}}Never{{else}}{{.LastTriggered.Format "Jan 02 15:04"}}{{end}}</td>
+                        <td>
+                            <form method="POST" action="/admin/alerts/{{.ID}}/delete" style="display:inline;">
+                                <button type="submit" class="btn btn-danger">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+            {{else}}
+            <p style="color: #888780; text-align: center;">No alert rules configured yet.</p>
+            {{end}}
+        </div>
+    </div>
+</body>
+</html>

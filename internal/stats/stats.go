@@ -6,10 +6,6 @@ import (
 	"time"
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
-
 type Packet struct {
 	SrcIP   string    `json:"src_ip"`
 	DstIP   string    `json:"dst_ip"`
@@ -44,36 +40,23 @@ type Snapshot struct {
 	TopConns     []ConnEntry    `json:"top_conns"`
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Store
-// ─────────────────────────────────────────────────────────────────────────────
-
 type Store struct {
 	mu sync.RWMutex
 
-	// totals
 	totalPkts  int
 	totalBytes int64
 	flagged    int
 
-	// per-protocol counts
 	protoCounts map[string]int
-
-	// per-IP counts (keyed by src IP)
-	ipCounts map[string]*IPEntry
-
-	// src|dst connection counts
+	ipCounts    map[string]*IPEntry
 	connections map[string]*ConnEntry
 
-	// rolling 30-second windows
-	trafficSecs   []int   // packets per second
-	bandwidthSecs []int64 // bytes per second
+	trafficSecs   []int
+	bandwidthSecs []int64
 
-	// current-second accumulators (reset each tick)
 	curSecPkts  int
 	curSecBytes int64
 
-	// SSE subscribers
 	subscribers []chan Packet
 }
 
@@ -87,13 +70,8 @@ func New() *Store {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Write path
-// ─────────────────────────────────────────────────────────────────────────────
-
 func (s *Store) Add(p Packet) {
 	s.mu.Lock()
-
 	s.totalPkts++
 	s.totalBytes += int64(p.Size)
 	s.curSecPkts++
@@ -103,17 +81,14 @@ func (s *Store) Add(p Packet) {
 		s.flagged++
 	}
 
-	// protocol counts
 	s.protoCounts[p.Proto]++
 
-	// top source IPs
 	if e, ok := s.ipCounts[p.SrcIP]; ok {
 		e.Count++
 	} else {
 		s.ipCounts[p.SrcIP] = &IPEntry{IP: p.SrcIP, Count: 1}
 	}
 
-	// connection pairs
 	ck := p.SrcIP + "|" + p.DstIP
 	if c, ok := s.connections[ck]; ok {
 		c.Count++
@@ -121,12 +96,10 @@ func (s *Store) Add(p Packet) {
 		s.connections[ck] = &ConnEntry{Src: p.SrcIP, Dst: p.DstIP, Count: 1}
 	}
 
-	// snapshot subscribers before unlocking
 	subs := make([]chan Packet, len(s.subscribers))
 	copy(subs, s.subscribers)
 	s.mu.Unlock()
 
-	// fan-out to SSE subscribers (non-blocking)
 	for _, ch := range subs {
 		select {
 		case ch <- p:
@@ -135,24 +108,15 @@ func (s *Store) Add(p Packet) {
 	}
 }
 
-// TickSecond advances both rolling windows by one second.
-// Call this from a time.Ticker goroutine every second.
 func (s *Store) TickSecond() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.trafficSecs = append(s.trafficSecs[1:], s.curSecPkts)
+	s.bandwidthSecs = append(s.bandwidthSecs[1:], s.curSecBytes)
 
-	// shift windows left, append current-second value
-	s.trafficSecs   = append(s.trafficSecs[1:],   s.curSecPkts)
-	s.bandwidthSecs = append(s.bandwidthSecs[1:],  s.curSecBytes)
-
-	// reset accumulators
-	s.curSecPkts  = 0
+	s.curSecPkts = 0
 	s.curSecBytes = 0
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SSE pub/sub
-// ─────────────────────────────────────────────────────────────────────────────
 
 func (s *Store) Subscribe() chan Packet {
 	ch := make(chan Packet, 64)
@@ -174,32 +138,23 @@ func (s *Store) Unsubscribe(ch chan Packet) {
 	}
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Read path — Snapshot
-// ─────────────────────────────────────────────────────────────────────────────
-
 func (s *Store) Snapshot() Snapshot {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// --- protocol counts (deep copy) ---
 	protos := make(map[string]int, len(s.protoCounts))
 	for k, v := range s.protoCounts {
 		protos[k] = v
 	}
 
-	// --- rolling traffic window (deep copy) ---
 	traffic := make([]int, len(s.trafficSecs))
 	copy(traffic, s.trafficSecs)
 
-	// --- rolling bandwidth window (deep copy) ---
 	bandwidth := make([]int64, len(s.bandwidthSecs))
 	copy(bandwidth, s.bandwidthSecs)
 
-	// current bandwidth is the last completed second
 	curBW := s.bandwidthSecs[len(s.bandwidthSecs)-1]
 
-	// --- top source IPs (sorted, top 6) ---
 	ips := make([]IPEntry, 0, len(s.ipCounts))
 	for _, e := range s.ipCounts {
 		ips = append(ips, *e)
@@ -209,7 +164,6 @@ func (s *Store) Snapshot() Snapshot {
 		ips = ips[:6]
 	}
 
-	// --- top connections (sorted, top 25) ---
 	conns := make([]ConnEntry, 0, len(s.connections))
 	for _, c := range s.connections {
 		conns = append(conns, *c)

@@ -25,6 +25,7 @@ import (
     "example.com/packet-analyser/internal/userstore"
 	"example.com/packet-analyser/internal/audit"
     "example.com/packet-analyser/internal/metrics"
+    "example.com/packet-analyser/internal/alerts"
 )
 
 type Handler struct {
@@ -37,9 +38,10 @@ type Handler struct {
 	authSvc  *auth.Service      
     users    *userstore.Store
 	audit    *audit.Store
+    alerts *alerts.Store 
 }
 
-func New(store *stats.Store, c *capture.Capturer, g *geo.Lookup, ex *export.Exporter, database *db.DB, authSvc *auth.Service, users *userstore.Store, audit *audit.Store) *Handler {
+func New(store *stats.Store, c *capture.Capturer, g *geo.Lookup, ex *export.Exporter, database *db.DB, authSvc *auth.Service, users *userstore.Store, audit *audit.Store, alerts *alerts.Store) *Handler {
 	// FIX: Added the missing '*' to parse ALL html files in the templates directory
 	tmpl := template.Must(template.ParseGlob("templates/*.html"))
 	
@@ -47,6 +49,7 @@ func New(store *stats.Store, c *capture.Capturer, g *geo.Lookup, ex *export.Expo
 		store: store, capturer: c, geo: g, tmpl: tmpl, 
 		exporter: ex, database: database, authSvc: authSvc, users: users,
 		audit: audit,
+		alerts: alerts,
 	}
 }
 
@@ -88,6 +91,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
     mux.Handle("POST /admin/users/{id}/delete",    admin(http.HandlerFunc(h.adminDeleteUser)))
     mux.Handle("POST /admin/users/{id}/password",  admin(http.HandlerFunc(h.adminResetPassword)))
 	mux.Handle("GET /admin/audit", admin(http.HandlerFunc(h.auditPage)))
+    mux.Handle("GET /admin/alerts", admin(http.HandlerFunc(h.adminAlertsPage)))
+    mux.Handle("POST /admin/alerts/create", admin(http.HandlerFunc(h.adminAlertsCreate)))
+    mux.Handle("POST /admin/alerts/{id}/delete", admin(http.HandlerFunc(h.adminAlertsDelete)))
 }
 
 
