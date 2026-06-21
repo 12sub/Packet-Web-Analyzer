@@ -6,26 +6,26 @@ import (
 	"io"
 	"log"
 	"mime"
+	// "net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 	"time"
-	"strconv"
-    
 
+	"example.com/packet-analyser/internal/alerts"
+	"example.com/packet-analyser/internal/audit"
+	"example.com/packet-analyser/internal/auth"
 	"example.com/packet-analyser/internal/capture"
 	"example.com/packet-analyser/internal/db"
 	"example.com/packet-analyser/internal/export"
 	"example.com/packet-analyser/internal/geo"
+	"example.com/packet-analyser/internal/metrics"
 	"example.com/packet-analyser/internal/stats"
-	"example.com/packet-analyser/internal/auth"
-    "example.com/packet-analyser/internal/userstore"
-	"example.com/packet-analyser/internal/audit"
-    "example.com/packet-analyser/internal/metrics"
-    "example.com/packet-analyser/internal/alerts"
+	"example.com/packet-analyser/internal/userstore"
 )
 
 type Handler struct {
@@ -647,3 +647,22 @@ func humanSize(b int64) string {
 		return fmt.Sprintf("%d B", b)
 	}
 }
+
+// // GetRealIP extracts the client's true IP address from reverse proxy headers.
+// func GetRealIP(r *http.Request) string {
+//     // Check X-Forwarded-For (used by Caddy, Nginx, AWS ALB)
+//     if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+//         parts := strings.Split(xff, ",")
+//         return strings.TrimSpace(parts[0])
+//     }
+//     // Check X-Real-IP (used by Nginx)
+//     if xri := r.Header.Get("X-Real-IP"); xri != "" {
+//         return xri
+//     }
+//     // Fallback to RemoteAddr (strip the port number)
+//     ip, _, err := net.SplitHostPort(r.RemoteAddr)
+//     if err != nil {
+//         return r.RemoteAddr
+//     }
+//     return ip
+// }
