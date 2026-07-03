@@ -6,6 +6,27 @@ import (
 	"time"
 )
 
+// ThreatIntel holds deep inspection data for flagged packets
+type ThreatIntel struct {
+	ServiceVersion string `json:"service_version"`
+	RouterInfo     string `json:"router_info"`
+	CapturedIPs    string `json:"captured_ips"`
+	Domain         string `json:"domain"`
+	PacketInfo     string `json:"packet_info"`
+	Severity       string `json:"severity"`
+	Reason         string `json:"reason"`
+}
+
+// Location mirrors geo.Location so the stats package stays self-contained.
+type Location struct {
+	IP      string  `json:"ip"`
+	City    string  `json:"city"`
+	Country string  `json:"country"`
+	Lat     float64 `json:"lat"`
+	Lng     float64 `json:"lng"`
+	Count   int     `json:"count"`
+}
+
 type Packet struct {
 	SrcIP   string    `json:"src_ip"`
 	DstIP   string    `json:"dst_ip"`
@@ -13,6 +34,19 @@ type Packet struct {
 	Size    int       `json:"size"`
 	Flagged bool      `json:"flagged"`
 	Time    time.Time `json:"time"`
+	Intel   *ThreatIntel `json:"intel,omitempty"`
+
+	// ── Enrichment fields ──
+	SrcMAC      string     `json:"src_mac,omitempty"`
+	DstMAC      string     `json:"dst_mac,omitempty"`
+	SrcVendor   string     `json:"src_vendor,omitempty"`
+	DstVendor   string     `json:"dst_vendor,omitempty"`
+	TTL         int        `json:"ttl,omitempty"`
+	OSGuess     string     `json:"os_guess,omitempty"`
+	SrcLocation *Location  `json:"src_location,omitempty"`
+	DstLocation *Location  `json:"dst_location,omitempty"`
+	SrcHost     string     `json:"src_host,omitempty"`
+	DstHost     string     `json:"dst_host,omitempty"`
 }
 
 type IPEntry struct {

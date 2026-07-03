@@ -27,6 +27,7 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    privileged: true
 
     environment:
       - IFACE=${IFACE:-}        # optional: pin to a specific interface

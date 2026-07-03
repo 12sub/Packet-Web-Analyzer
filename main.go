@@ -20,6 +20,7 @@ import (
 	"example.com/packet-analyser/internal/metrics"
 	"example.com/packet-analyser/internal/stats"
 	"example.com/packet-analyser/internal/userstore"
+	"example.com/packet-analyser/internal/enrich"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -37,6 +38,7 @@ func main() {
 		log.Println("[geo] GeoLite2 database loaded")
 		defer g.Close()
 	}
+	enricher := enrich.New(g)
 
 	// SQLite session history
 	database, err := db.Open("./exports/session.db")
@@ -94,7 +96,7 @@ func main() {
 	alertEngine.Start()
 
 	// Wire everything together
-	h := handlers.New(store, cap, g, ex, database, authSvc, users, auditStore, alertStore)
+	h := handlers.New(store, cap, g, ex, database, authSvc, users, auditStore, alertStore, enricher)
 
 	mux := http.NewServeMux()
 	h.Register(mux)

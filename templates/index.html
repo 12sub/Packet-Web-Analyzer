@@ -1,684 +1,792 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Packet Analyzer</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Packet Analyzer</title>
 
-  <!-- HTMX + SSE extension -->
-  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-  <script src="https://unpkg.com/htmx.org@1.9.12/dist/ext/sse.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 
-  <!-- Chart.js -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+    <!-- D3 — connection graph -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 
-  <!-- D3 — connection graph -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+    <!-- Leaflet — geo IP map -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 
-  <!-- Leaflet — geo IP map -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: system-ui, -apple-system, sans-serif; background: #f5f5f3; 
+            color: #1a1a18; display: flex; flex-direction: column; min-height: 100vh; 
+        }
+        
+        header {
+            display: flex; align-items: center; gap: 16px;
+            padding: 12px 24px; background: #fff;
+            border-bottom: 0.5px solid #d3d1c7; flex-wrap: wrap;
+        }
+        header h1 { font-size: 15px; font-weight: 500; flex: 1; }
+        .filter-group { display: flex; gap: 8px; align-items: center; }
+        .filter-group input {
+            padding: 6px 12px; border: 0.5px solid #d3d1c7; border-radius: 6px;
+            font-size: 13px; width: 250px; font-family: monospace;
+        }
+        .btn {
+            padding: 6px 14px; border-radius: 6px; font-size: 13px; font-weight: 500;
+            cursor: pointer; border: 0.5px solid #d3d1c7; background: #fff; color: #1a1a18;
+        }
+        .btn-primary { background: #0C447C; color: #fff; border-color: #0C447C; }
+        .btn:hover { opacity: 0.9; }
+        .user-badge {
+            font-size: 12px; padding: 4px 10px; border-radius: 6px;
+            background: #f1efe8; border: 0.5px solid #d3d1c7; color: #5f5e5a;
+        }
 
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: system-ui, sans-serif; background: #f5f5f3; color: #1a1a18; }
+        .app-layout { display: flex; flex: 1; min-height: 0; }
+        .sidebar {
+            width: 240px; background: #fff; border-right: 0.5px solid #d3d1c7;
+            padding: 24px 0; flex-shrink: 0; display: flex; flex-direction: column;
+        }
+        .sidebar-section-title {
+            font-size: 11px; font-weight: 500; color: #888780;
+            text-transform: uppercase; padding: 0 20px 12px; letter-spacing: 0.5px;
+        }
+        .sidebar-link {
+            display: flex; align-items: center; gap: 10px;
+            padding: 10px 20px; font-size: 14px; color: #1a1a18;
+            text-decoration: none; transition: background 0.15s;
+        }
+        .sidebar-link:hover { background: #f1efe8; color: #0C447C; }
 
-    /* ── Header ── */
-    header {
-      display: flex; align-items: center; gap: 12px;
-      padding: 12px 20px; background: #fff;
-      border-bottom: 0.5px solid #d3d1c7; flex-wrap: wrap;
-    }
-    header h1 { font-size: 15px; font-weight: 500; flex: 1; }
-    .dot {
-      width: 8px; height: 8px; border-radius: 50%; background: #3B6D11;
-      display: inline-block; animation: pulse 1.4s infinite;
-    }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
-    .badge {
-      font-size: 12px; padding: 3px 10px; border-radius: 6px;
-      border: 0.5px solid #d3d1c7; color: #5f5e5a; background: #f1efe8;
-    }
+        .main-content { flex: 1; padding: 24px; overflow-y: auto; }
+        .section-title { font-size: 18px; font-weight: 500; margin-bottom: 20px; }
+        
+        .stats-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px; margin-bottom: 24px;
+        }
+        .stat-card {
+            background: #fff; border: 0.5px solid #d3d1c7; border-radius: 10px;
+            padding: 16px 20px;
+        }
+        .stat-label { font-size: 12px; color: #888780; text-transform: uppercase; font-weight: 500; margin-bottom: 8px; }
+        .stat-value { font-size: 24px; font-weight: 600; color: #1a1a18; }
 
-    /* ── BPF filter bar ── */
-    .filter-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .filter-bar input {
-      font-size: 12px; font-family: monospace; padding: 4px 10px;
-      border: 0.5px solid #d3d1c7; border-radius: 6px;
-      background: #f9f8f5; color: #1a1a18; width: 260px; outline: none;
-    }
-    .filter-bar input:focus { border-color: #378ADD; background: #fff; }
-    .filter-bar button {
-      font-size: 12px; padding: 4px 12px; border-radius: 6px;
-      border: 0.5px solid #d3d1c7; background: #fff;
-      color: #1a1a18; cursor: pointer;
-    }
-    .filter-bar button:hover { background: #f1efe8; }
-    #filter-status { font-size: 12px; font-family: monospace; }
-    .filter-ok  { color: #3B6D11; }
-    .filter-err { color: #a32d2d; }
+        .cards-grid {
+            display: grid; grid-template-columns: 1.7fr 1fr; gap: 16px; margin-bottom: 24px;
+        }
+        .card {
+            background: #fff; border: 0.5px solid #d3d1c7; border-radius: 10px;
+            padding: 16px 20px;
+        }
+        .card-title {
+            font-size: 11px; font-weight: 500; color: #888780;
+            text-transform: uppercase; letter-spacing: .05em; margin-bottom: 12px;
+        }
+        .card.full-width { grid-column: 1 / -1; }
 
-    /* ── Layout ── */
-    main { padding: 16px 20px; max-width: 1200px; margin: 0 auto; }
+        .chart-wrap { position: relative; height: 170px; }
+        .chart-wrap-lg { position: relative; height: 200px; }
+        .chart-wrap-sm { position: relative; height: 150px; }
 
-    /* Layout Container */
-    .app-layout {
-        display: flex;
-        flex: 1;
-        min-height: 0; /* Prevents flex items from overflowing */
-    }
+        .proto-legend {
+            display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; font-size: 11px; color: #888780;
+        }
+        .proto-legend span {
+            display: flex; align-items: center; gap: 4px;
+        }
+        .legend-dot {
+            width: 9px; height: 9px; border-radius: 2px; display: inline-block;
+        }
 
-    /* Sidebar Styles */
-    .sidebar {
-        width: 240px;
-        background: #fff;
-        border-right: 0.5px solid #d3d1c7;
-        padding: 24px 0;
-        flex-shrink: 0;
-        display: flex;
-        flex-direction: column;
-    }
-    .sidebar-section-title {
-        font-size: 11px;
-        font-weight: 500;
-        color: #888780;
-        text-transform: uppercase;
-        padding: 0 20px 12px;
-        letter-spacing: 0.5px;
-    }
-    .sidebar-link {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 10px 20px;
-        font-size: 14px;
-        color: #1a1a18;
-        text-decoration: none;
-        transition: background 0.15s, border-color 0.15s;
-        border-left: 3px solid transparent;
-    }
-    .sidebar-link:hover {
-        background: #f1efe8;
-        color: #0C447C;
-    }
-    .sidebar-link.active {
-        background: #f1efe8;
-        font-weight: 500;
-        border-left: 3px solid #0C447C;
-        color: #0C447C;
-    }
+        .bar-bg { width: 100%; height: 5px; background: #f1efe8; border-radius: 3px; overflow: hidden; }
+        .bar-fill { height: 5px; background: #378ADD; border-radius: 3px; }
 
-    /* Main Content Area */
-    .main-content {
-        flex: 1;
-        padding: 24px;
-        overflow-y: auto;
-        background: #f5f5f3;
-    }
+        .bw-badge { font-size: 12px; color: #888780; margin-bottom: 8px; }
+        .bw-badge span { font-family: monospace; color: #1a1a18; font-weight: 500; }
 
-    /* ── Summary cards ── */
-    .cards {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 10px; margin-bottom: 16px;
-    }
-    .card {
-      background: #fff; border-radius: 8px;
-      border: 0.5px solid #d3d1c7; padding: 14px 16px;
-    }
-    .card-label { font-size: 12px; color: #888780; margin-bottom: 4px; }
-    .card-val   { font-size: 22px; font-weight: 500; font-family: monospace; }
-    .card-val.danger { color: #a32d2d; }
+        #geo-map { height: 280px; border-radius: 6px; }
+        #conn-svg { width: 100%; height: 260px; }
 
-    /* ── Panels ── */
-    .panel {
-      background: #fff; border: 0.5px solid #d3d1c7;
-      border-radius: 10px; padding: 14px 16px;
-    }
-    .panel-title {
-      font-size: 11px; font-weight: 500; color: #888780;
-      text-transform: uppercase; letter-spacing: .05em; margin-bottom: 10px;
-    }
+        .table-container {
+            background: #fff; border: 0.5px solid #d3d1c7; border-radius: 10px;
+            margin-bottom: 24px; overflow: hidden;
+        }
+        .table-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px 20px; border-bottom: 0.5px solid #e8e6e0;
+        }
+        .table-header h3 { font-size: 15px; font-weight: 500; }
+        
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th {
+            text-align: left; padding: 10px 16px; background: #fafaf8;
+            border-bottom: 0.5px solid #e8e6e0; color: #888780; font-size: 11px;
+            text-transform: uppercase; font-weight: 500;
+        }
+        td { padding: 10px 16px; border-bottom: 0.5px solid #f1efe8; vertical-align: middle; }
+        tr:hover td { background: #fafaf8; }
+        tr.pkt-row { cursor: pointer; transition: background 0.1s; }
+        tr.pkt-row:hover { background: #f1efe8; }
+        tr.flagged td { background: #FCEBEB; }
+        .mono { font-family: monospace; font-size: 12px; }
 
-    /* ── Grid rows ── */
-    .mid, .bottom { display: grid; grid-template-columns: 1.7fr 1fr; gap: 12px; margin-bottom: 16px; }
-    .analytics    { display: grid; grid-template-columns: 1fr 1fr;   gap: 12px; margin-bottom: 16px; }
-    .analytics .geo-panel { grid-column: 1 / -1; }
+        .ptag { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 500; display: inline-block; }
+        .ptag.TCP  { background: #E6F1FB; color: #0C447C; }
+        .ptag.UDP  { background: #EAF3DE; color: #3B6D11; }
+        .ptag.DNS  { background: #FAEEDA; color: #633806; }
+        .ptag.ICMP { background: #FBEAF0; color: #72243E; }
+        .ptag.HTTP { background: #EEEDFE; color: #3C3489; }
 
-    /* ── Packet feed ── */
-    .feed-wrap { max-height: 220px; overflow: hidden; }
-    table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: monospace; table-layout: fixed; }
-    th { font-size: 11px; color: #888780; font-weight: 400; text-align: left; padding: 0 6px 6px; }
-    td { padding: 4px 6px; border-top: 0.5px solid #e8e6e0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    tr.flagged td { background: #FCEBEB; }
+        .modal {
+            display: none;
+            position: fixed; z-index: 1000; left: 0; top: 0;
+            width: 100%; height: 100%; background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(3px);
+            justify-content: center; align-items: center;
+        }
+        .modal-content {
+            background: #fff; padding: 30px; border-radius: 12px; width: 90%; max-width: 600px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2); border-left: 6px solid #A32D2D;
+            max-height: 80vh; overflow-y: auto;
+        }
+        .close-btn { 
+            float: right; font-size: 28px; font-weight: bold; color: #888; 
+            cursor: pointer; line-height: 1; 
+        }
+        .close-btn:hover { color: #1a1a18; }
+        
+        .btn-intel {
+            background: #A32D2D; color: #fff; border: none; border-radius: 4px;
+            padding: 4px 10px; font-size: 11px; font-weight: 500; cursor: pointer;
+        }
+        .btn-intel:hover { background: #8a2424; }
 
-    /* ── Protocol tags ── */
-    .ptag { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 500; display: inline-block; }
-    .ptag.TCP  { background: #E6F1FB; color: #0C447C; }
-    .ptag.UDP  { background: #EAF3DE; color: #3B6D11; }
-    .ptag.DNS  { background: #FAEEDA; color: #633806; }
-    .ptag.ICMP { background: #FBEAF0; color: #72243E; }
-    .ptag.HTTP { background: #EEEDFE; color: #3C3489; }
+        #packet-modal {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.35); z-index: 1000;
+            align-items: center; justify-content: center;
+        }
+        #packet-modal .modal-content {
+            background: #fff; border-radius: 12px; width: 92%; max-width: 720px;
+            max-height: 90vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+            border-left: none; padding: 0;
+        }
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 14px 20px; border-bottom: 0.5px solid #e8e6e0;
+        }
+        .modal-header h3 { font-size: 15px; font-weight: 500; margin: 0; }
+        .modal-close {
+            background: none; border: none; font-size: 22px; cursor: pointer;
+            color: #888780; line-height: 1;
+        }
+        .modal-body { padding: 18px 20px; }
+        .detail-grid {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+        }
+        .detail-card {
+            background: #fafaf8; border: 0.5px solid #e8e6e0;
+            border-radius: 8px; padding: 14px;
+        }
+        .detail-card-title {
+            font-size: 11px; font-weight: 600; color: #888780;
+            text-transform: uppercase; letter-spacing: 0.04em;
+            margin-bottom: 10px;
+        }
+        .detail-row {
+            display: flex; justify-content: space-between;
+            font-size: 12px; padding: 5px 0;
+            border-bottom: 0.5px solid #f0efe8;
+        }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-row span:first-child { color: #888780; }
+        .detail-row span:last-child { font-family: monospace; color: #1a1a18; max-width: 60%; text-align: right; word-break: break-all; }
+        .geo-card { grid-column: 1 / -1; }
+        #detail-map { height: 220px; border-radius: 6px; border: 0.5px solid #e8e6e0; }
 
-    /* ── Top IPs bar ── */
-    .bar-bg   { width: 100%; height: 5px; background: #f1efe8; border-radius: 3px; overflow: hidden; }
-    .bar-fill { height: 5px; background: #378ADD; border-radius: 3px; }
-
-    /* ── Bandwidth badge ── */
-    .bw-badge { font-size: 12px; color: #888780; margin-bottom: 8px; }
-    .bw-badge span { font-family: monospace; color: #1a1a18; font-weight: 500; }
-
-    /* ── Geo map ── */
-    #geo-map { height: 280px; border-radius: 6px; }
-
-    /* ── Connection graph ── */
-    #conn-svg { width: 100%; height: 260px; }
-
-    @media(max-width: 720px) {
-      .mid, .bottom, .analytics { grid-template-columns: 1fr; }
-      .analytics .geo-panel { grid-column: 1; }
-    }
-      /* Sidebar Toggle Button */
-  .sidebar-toggle {
-      position: absolute;
-      top: 20px;
-      right: -16px;
-      width: 32px;
-      height: 32px;
-      background: #fff;
-      border: 0.5px solid #d3d1c7;
-      border-radius: 50%;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 14px;
-      color: #5f5e5a;
-      transition: all 0.2s;
-      z-index: 10;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-  }
-  .sidebar-toggle:hover {
-      background: #f1efe8;
-      color: #0C447C;
-  }
-
-  /* Collapsed State */
-  .sidebar.collapsed {
-      width: 60px;
-  }
-  .sidebar.collapsed .sidebar-section-title {
-      display: none;
-  }
-  .sidebar.collapsed .sidebar-link {
-      justify-content: center;
-      padding: 12px;
-      border-left: none;
-  }
-  .sidebar.collapsed .sidebar-link span:last-child {
-      display: none;
-  }
-  .sidebar.collapsed .sidebar-link span:first-child {
-      font-size: 18px;
-  }
-
-  /* Smooth Transitions */
-  .sidebar, .main-content {
-      transition: all 0.3s ease;
-  }
-
-  /* Responsive: Hide toggle on mobile */
-  @media (max-width: 768px) {
-      .sidebar-toggle {
-          display: none;
-      }
-  }
-  </style>
+        @media(max-width: 720px) {
+            .cards-grid { grid-template-columns: 1fr; }
+            .detail-grid { grid-template-columns: 1fr; }
+        }
+    </style>
 </head>
 <body>
 
-<header>
-  <h1>⬡ Packet Analyzer</h1>
-  <span class="badge"><span class="dot"></span> Live capture</span>
+    <header>
+        <h1>⬡ Packet Analyzer</h1>
+        <div class="filter-group">
+            <input type="text" id="bpfFilter" placeholder="BPF Filter (e.g., tcp port 80)">
+            <button class="btn btn-primary" onclick="applyFilter()">Apply</button>
+            <button class="btn" onclick="clearFilter()">Clear</button>
+        </div>
+        {{if .CurrentUser}}
+        <span class="user-badge">{{.CurrentUser.Username}} ({{.CurrentUser.Role}})</span>
+        <form method="POST" action="/auth/logout" style="display:inline">
+            <button class="btn" type="submit">Logout</button>
+        </form>
+        {{end}}
+    </header>
 
-  <!-- BPF filter -->
-  <div class="filter-bar">
-    <input  id="bpf-input"
-            type="text"
-            name="filter"
-            placeholder="BPF filter e.g. tcp port 443"
-            value="{{.ActiveFilter}}"
-            onkeydown="if(event.key==='Enter') applyFilter()"
-    />
-    <button onclick="applyFilter()">Apply</button>
-    <button onclick="clearFilter()">Clear</button>
-    <span id="filter-status"></span>
-  </div>
-</header>
+    <div class="app-layout">
+        {{if and .CurrentUser (eq .CurrentUser.Role "admin")}}
+        <aside class="sidebar">
+            <div class="sidebar-section-title">Administration</div>
+            <a href="/exports" class="sidebar-link"><span>📦</span><span>Export Data</span></a>
+            <a href="/admin" class="sidebar-link"><span>👥</span><span>Manage Users</span></a>
+            <a href="/admin/audit" class="sidebar-link"><span>📜</span><span>Audit Logs</span></a>
+            <a href="/admin/alerts" class="sidebar-link"><span>🔔</span><span>Alert Rules</span></a>
+            <a href="/admin/flagged" class="sidebar-link"><span>🚨</span><span>Flagged Packets</span></a>
+        </aside>
+        {{end}}
 
-<!-- 2. NEW: The Flex Layout Container -->
-  <div class="app-layout">
-      
-      <!-- 3. NEW: The Sidebar -->
-      <aside class="sidebar">
-          <!-- 
-            Only render this block if the user is logged in AND their role is "admin".
-            Users and Editors will see an empty sidebar.
-          -->
-            <button class="sidebar-toggle" id="sidebarToggle" title="Toggle Sidebar">
-                <span id="toggleIcon">◀</span>
-            </button>
-          {{if and .CurrentUser (eq .CurrentUser.Role "admin")}}
-              <div class="sidebar-section-title">Administration</div>
-              
-              <a href="/exports" class="sidebar-link">
-                  <span>📦</span> Export Data
-              </a>
-              <a href="/admin" class="sidebar-link">
-                  <span>👥</span> Manage Users
-              </a>
-              <a href="/admin/audit" class="sidebar-link active">
-                  <span>📜</span> Audit Logs
-              </a>
-              <a href="/admin/alerts" class="sidebar-link">
-                  <span>🔔</span>
-                  <span>Alert Rules</span>
-              </a>
-          {{end}}
-      </aside>
+        <main class="main-content">
+            <h2 class="section-title">Dashboard</h2>
 
-      <!-- 4. Your existing Main Content -->
-      <main class="main-content">
-          <!-- 
-            MOVE ALL YOUR EXISTING INDEX CONTENT HERE.
-            (e.g., your stats cards, packet tables, BPF filter inputs, etc.)
-          -->
-          
-          <h2 style="font-size: 18px; font-weight: 500; margin-bottom: 20px;">Dashboard</h2>
-          <!-- ... rest of your original index.html body ... -->
-      </main>
-  </div> 
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Packets</div>
+                    <div class="stat-value" id="stat-pkts">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Data Transferred</div>
+                    <div class="stat-value" id="stat-bytes">0 B</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Active Connections</div>
+                    <div class="stat-value" id="stat-conns">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Flagged Threats</div>
+                    <div class="stat-value" id="stat-flagged" style="color: #A32D2D;">0</div>
+                </div>
+            </div>
 
-<main> 
+            <!-- Row 1: Live Packet Feed + Protocol Donut -->
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-title">Live Packet Feed <span style="font-weight:400;color:#888780">(click any row for details)</span></div>
+                    <div style="max-height: 220px; overflow: hidden;">
+                        <table style="font-size: 12px;">
+                            <thead>
+                                <tr>
+                                    <th style="width:22%">Src IP</th>
+                                    <th style="width:22%">Dst IP</th>
+                                    <th style="width:14%">Proto</th>
+                                    <th style="width:12%">Size</th>
+                                    <th style="width:30%">Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="packet-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
 
-  <!-- ── Summary cards (polled every 2s via HTMX) ── -->
-  <div class="cards"
-       id="stat-cards"
-       hx-get="/api/stats"
-       hx-trigger="load, every 2s"
-       hx-swap="none"
-       hx-on::after-request="updateCards(event)">
-    <div class="card"><div class="card-label">Total packets</div><div class="card-val" id="c-total">—</div></div>
-    <div class="card"><div class="card-label">Data transferred</div><div class="card-val" id="c-data">—</div></div>
-    <div class="card"><div class="card-label">Active connections</div><div class="card-val" id="c-conns">—</div></div>
-    <div class="card"><div class="card-label">Flagged</div><div class="card-val danger" id="c-flag">—</div></div>
-  </div>
+                <div class="card">
+                    <div class="card-title">Protocol Breakdown</div>
+                    <div class="chart-wrap">
+                        <canvas id="protoChart"></canvas>
+                    </div>
+                    <div class="proto-legend" id="proto-legend"></div>
+                </div>
+            </div>
 
-  <!-- ── Row 1: live feed + protocol donut ── -->
-  <div class="mid">
-    <div class="panel">
-      <div class="panel-title">Live packet feed</div>
-      <div class="feed-wrap">
-        <table>
-          <thead><tr>
-            <th style="width:22%">Src IP</th>
-            <th style="width:22%">Dst IP</th>
-            <th style="width:14%">Proto</th>
-            <th style="width:12%">Size</th>
-            <th style="width:30%">Time</th>
-          </tr></thead>
-          <tbody id="feed-body"
-                 hx-ext="sse"
-                 sse-connect="/sse/packets"
-                 sse-swap="packet"
-                 hx-swap="afterbegin">
-          </tbody>
-        </table>
-      </div>
+            <!-- Row 2: Traffic Line + Top IPs -->
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-title">Traffic — Packets / Sec (30s Window)</div>
+                    <div class="chart-wrap-sm">
+                        <canvas id="trafficChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Top Source IPs</div>
+                    <table style="font-size: 12px;">
+                        <thead>
+                            <tr><th>IP</th><th>Pkts</th><th style="width:38%">Share</th></tr>
+                        </thead>
+                        <tbody id="ip-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Row 3: Bandwidth + Connection Graph -->
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-title">Bandwidth — Bytes / Sec</div>
+                    <div class="bw-badge">Current: <span id="bw-current">—</span></div>
+                    <div class="chart-wrap-lg">
+                        <canvas id="bwChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">Connection Graph</div>
+                    <svg id="conn-svg"></svg>
+                </div>
+            </div>
+
+            <!-- Row 4: Geo IP Map -->
+            <div class="card full-width">
+                <div class="card-title">Geo IP Map</div>
+                <div id="geo-map"></div>
+            </div>
+        </main>
     </div>
 
-    <div class="panel">
-      <div class="panel-title">Protocol breakdown</div>
-      <div style="position:relative;height:170px;">
-        <canvas id="protoChart" role="img" aria-label="Protocol distribution donut chart"></canvas>
-      </div>
-      <div id="proto-legend" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;font-size:11px;color:#888780;"></div>
-    </div>
-  </div>
-
-  <!-- ── Row 2: traffic line + top IPs ── -->
-  <div class="bottom">
-    <div class="panel">
-      <div class="panel-title">Traffic — packets / sec (30s window)</div>
-      <div style="position:relative;height:150px;">
-        <canvas id="trafficChart" role="img" aria-label="Packets per second over 30 seconds"></canvas>
-      </div>
+    <!-- Threat Modal -->
+    <div id="threatModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn" onclick="document.getElementById('threatModal').style.display='none'">&times;</span>
+            <h2 style="color: #A32D2D; margin-top: 0;">🚨 Threat Intelligence Report</h2>
+            <div id="threatBody" style="font-family: monospace; line-height: 1.6;"></div>
+        </div>
     </div>
 
-    <div class="panel">
-      <div class="panel-title">Top source IPs</div>
-      <table>
-        <thead><tr><th>IP</th><th>Pkts</th><th style="width:38%">Share</th></tr></thead>
-        <tbody id="ip-body"></tbody>
-      </table>
+    <!-- Packet Detail Modal -->
+    <div id="packet-modal" class="modal" onclick="if(event.target===this)closePacketDetail()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔍 Packet Details</h3>
+                <button onclick="closePacketDetail()" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="detail-grid">
+                    <div class="detail-card">
+                        <div class="detail-card-title">🔹 Source</div>
+                        <div class="detail-row"><span>IP Address</span><span id="detail-src-ip">-</span></div>
+                        <div class="detail-row"><span>MAC Address</span><span id="detail-src-mac">-</span></div>
+                        <div class="detail-row"><span>Vendor / Device</span><span id="detail-src-vendor">-</span></div>
+                        <div class="detail-row"><span>Hostname</span><span id="detail-src-host">-</span></div>
+                        <div class="detail-row"><span>Location</span><span id="detail-src-loc">-</span></div>
+                    </div>
+                    <div class="detail-card">
+                        <div class="detail-card-title">🔸 Destination</div>
+                        <div class="detail-row"><span>IP Address</span><span id="detail-dst-ip">-</span></div>
+                        <div class="detail-row"><span>MAC Address</span><span id="detail-dst-mac">-</span></div>
+                        <div class="detail-row"><span>Vendor / Device</span><span id="detail-dst-vendor">-</span></div>
+                        <div class="detail-row"><span>Hostname</span><span id="detail-dst-host">-</span></div>
+                        <div class="detail-row"><span>Location</span><span id="detail-dst-loc">-</span></div>
+                    </div>
+                    <div class="detail-card">
+                        <div class="detail-card-title">📦 Packet</div>
+                        <div class="detail-row"><span>Protocol</span><span id="detail-proto">-</span></div>
+                        <div class="detail-row"><span>Size</span><span id="detail-size">-</span></div>
+                        <div class="detail-row"><span>TTL</span><span id="detail-ttl">-</span></div>
+                        <div class="detail-row"><span>OS Guess</span><span id="detail-os">-</span></div>
+                        <div class="detail-row"><span>Time</span><span id="detail-time">-</span></div>
+                    </div>
+                    <div class="detail-card geo-card">
+                        <div class="detail-card-title">🌍 Geo Map</div>
+                        <div id="detail-map"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
-  </div>
 
-  <!-- ── Row 3: bandwidth + connection graph ── -->
-  <div class="analytics">
-    <div class="panel">
-      <div class="panel-title">Bandwidth — bytes / sec</div>
-      <div class="bw-badge">Current: <span id="bw-current">—</span></div>
-      <div style="position:relative;height:200px;">
-        <canvas id="bwChart" role="img" aria-label="Bytes per second over 30 seconds"></canvas>
-      </div>
-    </div>
+    <script>
+        // ── Constants ────────────────────────────────────────────────────
+        const PROTOS = ['TCP', 'UDP', 'DNS', 'ICMP', 'HTTP'];
+        const COLORS = ['#378ADD', '#3B6D11', '#BA7517', '#993356', '#534AB7'];
 
-    <div class="panel">
-      <div class="panel-title">Connection graph</div>
-      <svg id="conn-svg" role="img" aria-label="Force-directed graph of IP connections"></svg>
-    </div>
-
-    <!-- ── Geo IP map (full width) ── -->
-    <div class="panel geo-panel">
-      <div class="panel-title">Geo IP map</div>
-      <div id="geo-map"></div>
-    </div>
-  </div>
-
-</main>
-
-<script>
-// ─────────────────────────────────────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────────────────────────────────────
-const PROTOS = ['TCP', 'UDP', 'DNS', 'ICMP', 'HTTP'];
-const COLORS = ['#378ADD', '#3B6D11', '#BA7517', '#993356', '#534AB7'];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Chart.js — protocol donut
-// ─────────────────────────────────────────────────────────────────────────────
-const protoChart = new Chart(document.getElementById('protoChart'), {
-  type: 'doughnut',
-  data: {
-    labels: PROTOS,
-    datasets: [{ data: [1,1,1,1,1], backgroundColor: COLORS, borderWidth: 0 }]
-  },
-  options: {
-    responsive: true, maintainAspectRatio: false, cutout: '65%',
-    plugins: { legend: { display: false } }
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Chart.js — traffic (packets/sec)
-// ─────────────────────────────────────────────────────────────────────────────
-const trafficChart = new Chart(document.getElementById('trafficChart'), {
-  type: 'line',
-  data: {
-    labels: Array(30).fill(''),
-    datasets: [{
-      label: 'pkt/s', data: Array(30).fill(0),
-      borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,.07)',
-      fill: true, tension: .35, pointRadius: 0, borderWidth: 1.5
-    }]
-  },
-  options: {
-    responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
-    scales: {
-      x: { display: false },
-      y: {
-        min: 0, border: { display: false },
-        ticks: { maxTicksLimit: 4, color: '#888780', font: { size: 10 }, callback: v => Math.round(v) },
-        grid: { color: 'rgba(0,0,0,.05)' }
-      }
-    },
-    plugins: { legend: { display: false } }
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Chart.js — bandwidth (bytes/sec)
-// ─────────────────────────────────────────────────────────────────────────────
-const bwChart = new Chart(document.getElementById('bwChart'), {
-  type: 'line',
-  data: {
-    labels: Array(30).fill(''),
-    datasets: [{
-      label: 'B/s', data: Array(30).fill(0),
-      borderColor: '#BA7517', backgroundColor: 'rgba(186,117,23,.07)',
-      fill: true, tension: .35, pointRadius: 0, borderWidth: 1.5
-    }]
-  },
-  options: {
-    responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
-    scales: {
-      x: { display: false },
-      y: {
-        min: 0, border: { display: false },
-        ticks: {
-          maxTicksLimit: 4, color: '#888780', font: { size: 10 },
-          callback: v => v >= 1048576 ? (v/1048576).toFixed(1)+'MB'
-                       : v >= 1024   ? (v/1024).toFixed(1)+'KB'
-                       : v+'B'
-        },
-        grid: { color: 'rgba(0,0,0,.05)' }
-      }
-    },
-    plugins: { legend: { display: false } }
-  }
-});
-
-// ─────────────────────────────────────────────────────────────────────────────
-// HTMX callback — single unified function (fixes the recursion bug)
-// Updates: stat cards, protocol donut, traffic chart, top IPs, bandwidth chart
-// ─────────────────────────────────────────────────────────────────────────────
-function updateCards(evt) {
-  const d = JSON.parse(evt.detail.xhr.responseText);
-
-  // stat cards
-  document.getElementById('c-total').textContent = d.total_pkts.toLocaleString();
-  const kb = d.total_bytes / 1024;
-  document.getElementById('c-data').textContent =
-    kb > 1024 ? (kb / 1024).toFixed(1) + ' MB' : Math.round(kb) + ' KB';
-  document.getElementById('c-conns').textContent = d.connections;
-  document.getElementById('c-flag').textContent  = d.flagged;
-
-  // protocol donut
-  protoChart.data.datasets[0].data = PROTOS.map(p => d.protos[p] || 0);
-  protoChart.update('none');
-
-  // protocol legend
-  document.getElementById('proto-legend').innerHTML = PROTOS.map((p, i) =>
-    `<span style="display:flex;align-items:center;gap:3px;">
-      <span style="width:9px;height:9px;border-radius:2px;background:${COLORS[i]};display:inline-block;"></span>
-      ${p} ${d.protos[p] || 0}
-    </span>`).join('');
-
-  // traffic chart
-  trafficChart.data.datasets[0].data = d.traffic;
-  trafficChart.update();
-
-  // top IPs
-  const maxC = d.top_ips && d.top_ips.length ? d.top_ips[0].count : 1;
-  document.getElementById('ip-body').innerHTML = (d.top_ips || []).map(e => `
-    <tr>
-      <td>${e.ip}</td>
-      <td>${e.count}</td>
-      <td><div class="bar-bg"><div class="bar-fill" style="width:${Math.round(e.count / maxC * 100)}%"></div></div></td>
-    </tr>`).join('');
-
-  // bandwidth chart + badge
-  if (d.bandwidth) {
-    bwChart.data.datasets[0].data = d.bandwidth;
-    bwChart.update();
-    const bps = d.cur_bandwidth || 0;
-    document.getElementById('bw-current').textContent =
-      bps >= 1048576 ? (bps / 1048576).toFixed(2) + ' MB/s' :
-      bps >= 1024    ? (bps / 1024).toFixed(1)    + ' KB/s' :
-                       bps + ' B/s';
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Trim packet feed to latest 20 rows to avoid DOM bloat
-// ─────────────────────────────────────────────────────────────────────────────
-const feedObs = new MutationObserver(() => {
-  const tb = document.getElementById('feed-body');
-  while (tb.children.length > 20) tb.removeChild(tb.lastChild);
-});
-feedObs.observe(document.getElementById('feed-body'), { childList: true });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// BPF filter
-// ─────────────────────────────────────────────────────────────────────────────
-function postFilter(expr) {
-  fetch('/capture/filter', { method: 'POST', body: new URLSearchParams({ filter: expr }) })
-    .then(r => r.text())
-    .then(html => {
-      document.getElementById('filter-status').innerHTML = html;
-      setTimeout(() => {
-        const el = document.getElementById('filter-status');
-        if (el) el.innerHTML = '';
-      }, 4000);
-    });
-}
-function applyFilter() { postFilter(document.getElementById('bpf-input').value.trim()); }
-function clearFilter()  { document.getElementById('bpf-input').value = ''; postFilter(''); }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// D3 — connection graph
-// ─────────────────────────────────────────────────────────────────────────────
-const connSvg = d3.select('#conn-svg');
-const GH = 260;
-const GW = () => document.getElementById('conn-svg').clientWidth;
-
-const simulation = d3.forceSimulation()
-  .force('link',      d3.forceLink().id(d => d.id).distance(80))
-  .force('charge',    d3.forceManyBody().strength(-120))
-  .force('center',    d3.forceCenter(GW() / 2, GH / 2))
-  .force('collision', d3.forceCollide(18));
-
-function subnetColor(ip) {
-  if (ip.startsWith('10.'))      return '#378ADD';
-  if (ip.startsWith('192.168.')) return '#3B6D11';
-  if (ip.startsWith('172.'))     return '#BA7517';
-  return '#534AB7';
-}
-
-function updateGraph(data) {
-  connSvg.selectAll('*').remove();
-  if (!data.nodes || !data.nodes.length) {
-    connSvg.append('text')
-      .attr('x', '50%').attr('y', '50%')
-      .attr('text-anchor', 'middle').attr('fill', '#888780').attr('font-size', 12)
-      .text('No connections yet');
-    return;
-  }
-  const maxPkts = d3.max(data.nodes, d => d.packets) || 1;
-  const maxCnt  = d3.max(data.links, d => d.count)   || 1;
-
-  const link = connSvg.append('g').selectAll('line')
-    .data(data.links).join('line')
-    .attr('stroke', '#d3d1c7')
-    .attr('stroke-width', d => 1 + (d.count / maxCnt) * 3);
-
-  const node = connSvg.append('g').selectAll('g')
-    .data(data.nodes).join('g')
-    .call(d3.drag()
-      .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(.3).restart(); d.fx = d.x; d.fy = d.y; })
-      .on('drag',  (e, d) => { d.fx = e.x; d.fy = e.y; })
-      .on('end',   (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
-
-  node.append('circle')
-    .attr('r', d => 6 + (d.packets / maxPkts) * 10)
-    .attr('fill', d => subnetColor(d.id))
-    .attr('fill-opacity', .85)
-    .attr('stroke', '#fff').attr('stroke-width', 1.5);
-
-  node.append('text')
-    .attr('dy', '0.35em').attr('dx', d => 8 + (d.packets / maxPkts) * 10)
-    .attr('font-size', 9).attr('fill', '#5f5e5a').attr('font-family', 'monospace')
-    .text(d => d.id);
-
-  node.append('title').text(d => `${d.id}\n${d.packets} packets`);
-
-  simulation.nodes(data.nodes).on('tick', () => {
-    link
-      .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
-      .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
-    node.attr('transform', d => `translate(${d.x},${d.y})`);
-  });
-  simulation.force('link').links(data.links);
-  simulation.force('center').x(GW() / 2).y(GH / 2);
-  simulation.alpha(0.8).restart();
-}
-
-async function pollConnections() {
-  try {
-    const r = await fetch('/api/connections');
-    updateGraph(await r.json());
-  } catch (e) { console.warn('connections poll:', e); }
-}
-pollConnections();
-setInterval(pollConnections, 3000);
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Leaflet — Geo IP map
-// ─────────────────────────────────────────────────────────────────────────────
-const map = L.map('geo-map', { zoomControl: true }).setView([20, 0], 2);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-  attribution: '© OpenStreetMap contributors © CARTO',
-  maxZoom: 18
-}).addTo(map);
-
-let geoMarkers = {};
-
-async function pollGeoIPs() {
-  try {
-    const r    = await fetch('/api/geoips');
-    const locs = await r.json();
-    locs.forEach(loc => {
-      if (!loc.lat && !loc.lng) return;
-      const radius = Math.max(6, Math.min(30, 4 + loc.count * 0.05));
-      const popup  = `<b>${loc.ip}</b><br>${loc.city}, ${loc.country}<br>${loc.count} packets`;
-      if (geoMarkers[loc.ip]) {
-        geoMarkers[loc.ip].setRadius(radius).bindPopup(popup);
-      } else {
-        geoMarkers[loc.ip] = L.circleMarker([loc.lat, loc.lng], {
-          radius, color: '#378ADD', fillColor: '#378ADD',
-          fillOpacity: .55, weight: 1.5
-        }).bindPopup(popup).addTo(map);
-      }
-    });
-  } catch (e) { console.warn('geoips poll:', e); }
-}
-pollGeoIPs();
-setInterval(pollGeoIPs, 5000);
-
-(function() {
-            const sidebar = document.getElementById('sidebar');
-            const toggleBtn = document.getElementById('sidebarToggle');
-            const toggleIcon = document.getElementById('toggleIcon');
-            
-            // Load saved state from localStorage
-            const savedState = localStorage.getItem('sidebarCollapsed');
-            if (savedState === 'true') {
-                sidebar.classList.add('collapsed');
-                toggleIcon.textContent = '▶';
+        // ── Chart.js — Protocol Donut ────────────────────────────────────
+        const protoChart = new Chart(document.getElementById('protoChart'), {
+            type: 'doughnut',
+            data: {
+                labels: PROTOS,
+                datasets: [{ data: [1,1,1,1,1], backgroundColor: COLORS, borderWidth: 0 }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, cutout: '65%',
+                plugins: { legend: { display: false } }
             }
+        });
+
+        // ── Chart.js — Traffic Line ──────────────────────────────────────
+        const trafficChart = new Chart(document.getElementById('trafficChart'), {
+            type: 'line',
+            data: {
+                labels: Array(30).fill(''),
+                datasets: [{
+                    label: 'pkt/s', data: Array(30).fill(0),
+                    borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,.07)',
+                    fill: true, tension: .35, pointRadius: 0, borderWidth: 1.5
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+                scales: {
+                    x: { display: false },
+                    y: {
+                        min: 0, border: { display: false },
+                        ticks: { maxTicksLimit: 4, color: '#888780', font: { size: 10 }, callback: v => Math.round(v) },
+                        grid: { color: 'rgba(0,0,0,.05)' }
+                    }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // ── Chart.js — Bandwidth Line ────────────────────────────────────
+        const bwChart = new Chart(document.getElementById('bwChart'), {
+            type: 'line',
+            data: {
+                labels: Array(30).fill(''),
+                datasets: [{
+                    label: 'B/s', data: Array(30).fill(0),
+                    borderColor: '#BA7517', backgroundColor: 'rgba(186,117,23,.07)',
+                    fill: true, tension: .35, pointRadius: 0, borderWidth: 1.5
+                }]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+                scales: {
+                    x: { display: false },
+                    y: {
+                        min: 0, border: { display: false },
+                        ticks: {
+                            maxTicksLimit: 4, color: '#888780', font: { size: 10 },
+                            callback: v => v >= 1048576 ? (v/1048576).toFixed(1)+'MB'
+                                       : v >= 1024   ? (v/1024).toFixed(1)+'KB'
+                                       : v+'B'
+                        },
+                        grid: { color: 'rgba(0,0,0,.05)' }
+                    }
+                },
+                plugins: { legend: { display: false } }
+            }
+        });
+
+        // ── Stats Polling (every 2s) — THIS IS THE FIX ──────────────────
+        function pollStats() {
+            fetch('/api/stats')
+                .then(r => {
+                    if (!r.ok) throw new Error('Stats fetch failed: ' + r.status);
+                    return r.json();
+                })
+                .then(d => {
+                    // Update stat cards
+                    document.getElementById('stat-pkts').textContent = d.total_pkts.toLocaleString();
+                    
+                    const kb = d.total_bytes / 1024;
+                    document.getElementById('stat-bytes').textContent = kb > 1024 
+                        ? (kb/1024).toFixed(1) + ' MB' 
+                        : Math.round(kb) + ' KB';
+                    
+                    document.getElementById('stat-conns').textContent = d.connections.toLocaleString();
+                    document.getElementById('stat-flagged').textContent = d.flagged.toLocaleString();
+
+                    // Protocol donut
+                    protoChart.data.datasets[0].data = PROTOS.map(p => d.protos[p] || 0);
+                    protoChart.update('none');
+
+                    // Protocol legend
+                    document.getElementById('proto-legend').innerHTML = PROTOS.map((p, i) =>
+                        `<span><span class="legend-dot" style="background:${COLORS[i]}"></span>${p} ${d.protos[p] || 0}</span>`
+                    ).join('');
+
+                    // Traffic chart
+                    trafficChart.data.datasets[0].data = d.traffic || Array(30).fill(0);
+                    trafficChart.update();
+
+                    // Top IPs
+                    const maxC = d.top_ips && d.top_ips.length ? d.top_ips[0].count : 1;
+                    document.getElementById('ip-body').innerHTML = (d.top_ips || []).map(e => `
+                        <tr>
+                            <td class="mono">${e.ip}</td>
+                            <td>${e.count}</td>
+                            <td><div class="bar-bg"><div class="bar-fill" style="width:${Math.round(e.count / maxC * 100)}%"></div></div></td>
+                        </tr>`).join('');
+
+                    // Bandwidth
+                    if (d.bandwidth) {
+                        bwChart.data.datasets[0].data = d.bandwidth;
+                        bwChart.update();
+                        const bps = d.cur_bandwidth || 0;
+                        document.getElementById('bw-current').textContent =
+                            bps >= 1048576 ? (bps/1048576).toFixed(2) + ' MB/s' :
+                            bps >= 1024    ? (bps/1024).toFixed(1)    + ' KB/s' :
+                                             bps + ' B/s';
+                    }
+                })
+                .catch(e => console.warn('stats poll error:', e));
+        }
+
+        // Call immediately on load, then every 2 seconds
+        pollStats();
+        setInterval(pollStats, 2000);
+
+        // ── SSE Connection (JSON from server) ────────────────────────────
+        const tableBody = document.getElementById('packet-tbody');
+        const maxRows = 100;
+
+        const evtSource = new EventSource("/sse/packets");
+        
+        evtSource.onmessage = function(event) {
+            const pkt = JSON.parse(event.data);
             
-            // Toggle handler
-            toggleBtn.addEventListener('click', function() {
-                sidebar.classList.toggle('collapsed');
-                const isCollapsed = sidebar.classList.contains('collapsed');
-                
-                // Update icon
-                toggleIcon.textContent = isCollapsed ? '▶' : '◀';
-                
-                // Save state to localStorage
-                localStorage.setItem('sidebarCollapsed', isCollapsed);
+            const row = document.createElement('tr');
+            row.className = 'pkt-row';
+            if (pkt.flagged) row.classList.add('flagged');
+            row.setAttribute('data-packet', JSON.stringify(pkt));
+            row.onclick = function() { showPacketDetail(this); };
+
+            const timeStr = new Date(pkt.time).toLocaleTimeString();
+            const protoClass = pkt.proto || 'TCP';
+
+            let actionHtml = '';
+            if (pkt.flagged && pkt.intel) {
+                const intelJson = JSON.stringify(pkt.intel).replace(/'/g, "\\'");
+                actionHtml = `<button class="btn-intel" onclick="event.stopPropagation(); showThreatModal(${intelJson})">🚨 View Intel</button>`;
+            }
+
+            row.innerHTML = `
+                <td class="mono">${pkt.src_ip}</td>
+                <td class="mono">${pkt.dst_ip}</td>
+                <td><span class="ptag ${protoClass}">${pkt.proto}</span></td>
+                <td>${pkt.size} B</td>
+                <td class="mono">${timeStr}</td>
+            `;
+
+            tableBody.insertBefore(row, tableBody.firstChild);
+            while (tableBody.children.length > maxRows) {
+                tableBody.removeChild(tableBody.lastChild);
+            }
+        };
+
+        evtSource.onerror = function(err) {
+            console.error("SSE Connection Error:", err);
+        };
+
+        // ── Filter Functions ─────────────────────────────────────────────
+        function applyFilter() {
+            const filter = document.getElementById('bpfFilter').value;
+            fetch('/capture/filter', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: 'filter=' + encodeURIComponent(filter)
+            }).then(res => {
+                if(res.ok) console.log("Filter applied!");
+                else alert("Invalid filter syntax.");
             });
-        })();
-</script>
+        }
+
+        function clearFilter() {
+            document.getElementById('bpfFilter').value = '';
+            applyFilter();
+        }
+
+        // ── Threat Modal ─────────────────────────────────────────────────
+        function getSeverityColor(sev) {
+            if (sev === 'Critical') return '#A32D2D';
+            if (sev === 'High') return '#E68119';
+            if (sev === 'Medium') return '#E6C819';
+            return '#888';
+        }
+
+        function showThreatModal(intel) {
+            const html = `
+                <p><strong>Severity:</strong> <span style="color:${getSeverityColor(intel.severity)}; font-weight:bold;">${intel.severity ? intel.severity.toUpperCase() : 'UNKNOWN'}</span></p>
+                <p><strong>Reason:</strong> ${intel.reason || 'N/A'}</p>
+                <hr>
+                <p><strong>Captured IPs:</strong> ${intel.captured_ips || 'N/A'}</p>
+                <p><strong>Domain / Target:</strong> ${intel.domain || 'Encrypted / Unknown'}</p>
+                <p><strong>Service Version:</strong> ${intel.service_version || 'Not Exposed'}</p>
+                <p><strong>Router / Network Info:</strong> ${intel.router_info || 'Standard Endpoint'}</p>
+                <hr>
+                <p><strong>Packet Info:</strong> ${intel.packet_info || 'N/A'}</p>
+            `;
+            document.getElementById('threatBody').innerHTML = html;
+            document.getElementById('threatModal').style.display = 'flex';
+        }
+
+        window.onclick = function(event) {
+            const modal = document.getElementById('threatModal');
+            if (event.target == modal) modal.style.display = 'none';
+        }
+
+        // ── Packet Detail Modal ──────────────────────────────────────────
+        let detailMap = null;
+        let detailMarkers = [];
+
+        function showPacketDetail(row) {
+            const data = JSON.parse(row.getAttribute('data-packet'));
+            
+            document.getElementById('detail-src-ip').textContent = data.src_ip || '-';
+            document.getElementById('detail-dst-ip').textContent = data.dst_ip || '-';
+            document.getElementById('detail-src-mac').textContent = data.src_mac || '-';
+            document.getElementById('detail-dst-mac').textContent = data.dst_mac || '-';
+            document.getElementById('detail-src-vendor').textContent = data.src_vendor || '-';
+            document.getElementById('detail-dst-vendor').textContent = data.dst_vendor || '-';
+            document.getElementById('detail-src-host').textContent = data.src_host || '-';
+            document.getElementById('detail-dst-host').textContent = data.dst_host || '-';
+            document.getElementById('detail-proto').textContent = data.proto || '-';
+            document.getElementById('detail-size').textContent = (data.size || 0) + ' B';
+            document.getElementById('detail-ttl').textContent = data.ttl || '-';
+            document.getElementById('detail-os').textContent = data.os_guess || '-';
+            document.getElementById('detail-time').textContent = data.time ? new Date(data.time).toLocaleString() : '-';
+
+            const srcLoc = data.src_location;
+            const dstLoc = data.dst_location;
+            document.getElementById('detail-src-loc').textContent = srcLoc ? `${srcLoc.city}, ${srcLoc.country}` : '-';
+            document.getElementById('detail-dst-loc').textContent = dstLoc ? `${dstLoc.city}, ${dstLoc.country}` : '-';
+
+            document.getElementById('packet-modal').style.display = 'flex';
+
+            if (!detailMap) {
+                detailMap = L.map('detail-map').setView([20, 0], 2);
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                    attribution: '© OpenStreetMap contributors © CARTO', maxZoom: 18
+                }).addTo(detailMap);
+            }
+
+            detailMarkers.forEach(m => detailMap.removeLayer(m));
+            detailMarkers = [];
+
+            const bounds = [];
+            if (srcLoc && srcLoc.lat) {
+                const m = L.circleMarker([srcLoc.lat, srcLoc.lng], {
+                    radius: 9, color: '#378ADD', fillColor: '#378ADD', fillOpacity: 0.7, weight: 2
+                }).bindPopup(`<b>Source</b><br>${data.src_ip}<br>${srcLoc.city}, ${srcLoc.country}`).addTo(detailMap);
+                detailMarkers.push(m);
+                bounds.push([srcLoc.lat, srcLoc.lng]);
+            }
+            if (dstLoc && dstLoc.lat) {
+                const m = L.circleMarker([dstLoc.lat, dstLoc.lng], {
+                    radius: 9, color: '#BA7517', fillColor: '#BA7517', fillOpacity: 0.7, weight: 2
+                }).bindPopup(`<b>Destination</b><br>${data.dst_ip}<br>${dstLoc.city}, ${dstLoc.country}`).addTo(detailMap);
+                detailMarkers.push(m);
+                bounds.push([dstLoc.lat, dstLoc.lng]);
+            }
+
+            if (bounds.length > 0) {
+                setTimeout(() => detailMap.fitBounds(bounds, {padding: [40, 40], maxZoom: 10}), 50);
+            } else {
+                detailMap.setView([20, 0], 2);
+            }
+        }
+
+        function closePacketDetail() {
+            document.getElementById('packet-modal').style.display = 'none';
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closePacketDetail();
+                document.getElementById('threatModal').style.display = 'none';
+            }
+        });
+
+        // ── D3 Connection Graph ─────────────────────────────────────────
+        const connSvg = d3.select('#conn-svg');
+        const GH = 260;
+        const GW = () => document.getElementById('conn-svg').clientWidth;
+
+        const simulation = d3.forceSimulation()
+            .force('link', d3.forceLink().id(d => d.id).distance(80))
+            .force('charge', d3.forceManyBody().strength(-120))
+            .force('center', d3.forceCenter(GW() / 2, GH / 2))
+            .force('collision', d3.forceCollide(18));
+
+        function subnetColor(ip) {
+            if (ip.startsWith('10.')) return '#378ADD';
+            if (ip.startsWith('192.168.')) return '#3B6D11';
+            if (ip.startsWith('172.')) return '#BA7517';
+            return '#534AB7';
+        }
+
+        function updateGraph(data) {
+            connSvg.selectAll('*').remove();
+            if (!data.nodes || !data.nodes.length) {
+                connSvg.append('text')
+                    .attr('x', '50%').attr('y', '50%')
+                    .attr('text-anchor', 'middle').attr('fill', '#888780').attr('font-size', 12)
+                    .text('No connections yet');
+                return;
+            }
+            const maxPkts = d3.max(data.nodes, d => d.packets) || 1;
+            const maxCnt = d3.max(data.links, d => d.count) || 1;
+
+            const link = connSvg.append('g').selectAll('line')
+                .data(data.links).join('line')
+                .attr('stroke', '#d3d1c7')
+                .attr('stroke-width', d => 1 + (d.count / maxCnt) * 3);
+
+            const node = connSvg.append('g').selectAll('g')
+                .data(data.nodes).join('g')
+                .call(d3.drag()
+                    .on('start', (e, d) => { if (!e.active) simulation.alphaTarget(.3).restart(); d.fx = d.x; d.fy = d.y; })
+                    .on('drag', (e, d) => { d.fx = e.x; d.fy = e.y; })
+                    .on('end', (e, d) => { if (!e.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+            node.append('circle')
+                .attr('r', d => 6 + (d.packets / maxPkts) * 10)
+                .attr('fill', d => subnetColor(d.id))
+                .attr('fill-opacity', .85)
+                .attr('stroke', '#fff').attr('stroke-width', 1.5);
+
+            node.append('text')
+                .attr('dy', '0.35em').attr('dx', d => 8 + (d.packets / maxPkts) * 10)
+                .attr('font-size', 9).attr('fill', '#5f5e5a').attr('font-family', 'monospace')
+                .text(d => d.id);
+
+            node.append('title').text(d => `${d.id}\n${d.packets} packets`);
+
+            simulation.nodes(data.nodes).on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+                node.attr('transform', d => `translate(${d.x},${d.y})`);
+            });
+            simulation.force('link').links(data.links);
+            simulation.force('center').x(GW() / 2).y(GH / 2);
+            simulation.alpha(0.8).restart();
+        }
+
+        async function pollConnections() {
+            try {
+                const r = await fetch('/api/connections');
+                updateGraph(await r.json());
+            } catch (e) { console.warn('connections poll:', e); }
+        }
+        pollConnections();
+        setInterval(pollConnections, 3000);
+
+        // ── Leaflet Geo IP Map ───────────────────────────────────────────
+        const map = L.map('geo-map', { zoomControl: true }).setView([20, 0], 2);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© OpenStreetMap contributors © CARTO', maxZoom: 18
+        }).addTo(map);
+
+        let geoMarkers = {};
+
+        async function pollGeoIPs() {
+            try {
+                const r = await fetch('/api/geoips');
+                const locs = await r.json();
+                locs.forEach(loc => {
+                    if (!loc.lat && !loc.lng) return;
+                    const radius = Math.max(6, Math.min(30, 4 + loc.count * 0.05));
+                    const popup = `<b>${loc.ip}</b><br>${loc.city}, ${loc.country}<br>${loc.count} packets`;
+                    if (geoMarkers[loc.ip]) {
+                        geoMarkers[loc.ip].setRadius(radius).bindPopup(popup);
+                    } else {
+                        geoMarkers[loc.ip] = L.circleMarker([loc.lat, loc.lng], {
+                            radius, color: '#378ADD', fillColor: '#378ADD',
+                            fillOpacity: .55, weight: 1.5
+                        }).bindPopup(popup).addTo(map);
+                    }
+                });
+            } catch (e) { console.warn('geoips poll:', e); }
+        }
+        pollGeoIPs();
+        setInterval(pollGeoIPs, 5000);
+    </script>
 </body>
 </html>

@@ -89,11 +89,14 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
-// --- NEW: Implement http.Flusher to support Server-Sent Events (SSE) ---
-// This passes the Flush() call down to the original ResponseWriter,
-// allowing real-time streaming to work again.
+// Flush implements http.Flusher so SSE works through this middleware.
 func (rw *responseWriter) Flush() {
 	if flusher, ok := rw.ResponseWriter.(http.Flusher); ok {
 		flusher.Flush()
 	}
+}
+
+// Unwrap allows middlewares further up the chain to access the original writer.
+func (rw *responseWriter) Unwrap() http.ResponseWriter {
+	return rw.ResponseWriter
 }

@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Flagged Packets — Packet Analyzer</title>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f5f5f3; color: #1a1a18; }
+
+    header {
+      display: flex; align-items: center; gap: 16px;
+      padding: 12px 24px; background: #fff;
+      border-bottom: 0.5px solid #d3d1c7; flex-wrap: wrap;
+    }
+    header h1 { font-size: 15px; font-weight: 500; flex: 1; }
+    .nav-link {
+      font-size: 13px; color: #5f5e5a; text-decoration: none;
+      padding: 4px 10px; border-radius: 6px; border: 0.5px solid #d3d1c7;
+    }
+    .nav-link:hover { background: #f1efe8; }
+    .user-badge {
+      font-size: 12px; padding: 3px 10px; border-radius: 6px;
+      background: #f1efe8; border: 0.5px solid #d3d1c7; color: #5f5e5a;
+    }
+
+    main { max-width: 1000px; margin: 0 auto; padding: 24px; }
+
+    .section {
+      background: #fff; border: 0.5px solid #d3d1c7;
+      border-radius: 10px; padding: 20px 24px; margin-bottom: 16px;
+    }
+    .section-title { font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+    .section-desc { font-size: 12px; color: #888780; margin-bottom: 16px; }
+
+    /* Action Buttons */
+    .action-bar {
+      display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .btn-action {
+      font-size: 13px; padding: 10px 20px; border-radius: 8px;
+      border: none; cursor: pointer; font-weight: 500;
+      display: flex; align-items: center; gap: 8px;
+      transition: all 0.15s;
+    }
+    .btn-quarantine { background: #FBEAF0; color: #72243E; }
+    .btn-quarantine:hover { background: #f0d4e0; }
+    .btn-delete { background: #FCEBEB; color: #A32D2D; }
+    .btn-delete:hover { background: #f5d0d0; }
+    .btn-yara { background: #E6F1FB; color: #0C447C; }
+    .btn-yara:hover { background: #d0e4f5; }
+
+    /* Status messages */
+    #action-msg { font-size: 13px; font-family: monospace; min-height: 20px; }
+    .msg-ok { color: #3B6D11; }
+    .msg-err { color: #a32d2d; }
+
+    /* Flagged packet rows */
+    .flagged-row {
+      border: 0.5px solid #e8e6e0; border-radius: 8px;
+      padding: 14px 16px; margin-bottom: 10px;
+      background: #fafaf8;
+    }
+    .flagged-main {
+      display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+      font-size: 13px;
+    }
+    .flagged-time { font-family: monospace; color: #888780; min-width: 140px; }
+    .flagged-ips { font-family: monospace; font-weight: 500; }
+    .flagged-size { color: #5f5e5a; }
+    .flagged-detail {
+      display: flex; gap: 16px; flex-wrap: wrap;
+      font-size: 11px; color: #888780; margin-top: 8px;
+      padding-top: 8px; border-top: 0.5px solid #f0efe8;
+    }
+
+    /* Badges */
+    .badge-q {
+      font-size: 11px; padding: 2px 8px; border-radius: 4px;
+      background: #E6F1FB; color: #0C447C; font-weight: 500;
+    }
+    .badge-open {
+      font-size: 11px; padding: 2px 8px; border-radius: 4px;
+      background: #FCEBEB; color: #A32D2D; font-weight: 500;
+    }
+
+    /* Protocol tags */
+    .ptag { font-size: 10px; padding: 1px 6px; border-radius: 4px; font-weight: 500; display: inline-block; }
+    .ptag.TCP  { background: #E6F1FB; color: #0C447C; }
+    .ptag.UDP  { background: #EAF3DE; color: #3B6D11; }
+    .ptag.DNS  { background: #FAEEDA; color: #633806; }
+    .ptag.ICMP { background: #FBEAF0; color: #72243E; }
+    .ptag.HTTP { background: #EEEDFE; color: #3C3489; }
+
+    .empty { font-size: 13px; color: #888780; padding: 20px 0; text-align: center; }
+    .count-badge {
+      font-size: 12px; padding: 2px 10px; border-radius: 12px;
+      background: #FCEBEB; color: #A32D2D; font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⬡ Packet Analyzer — Flagged Packets</h1>
+  <span class="user-badge">
+    {{.CurrentUser.Username}}
+    <span style="font-size:10px;opacity:0.7">({{.CurrentUser.Role}})</span>
+  </span>
+  <a class="nav-link" href="/">← Dashboard</a>
+  <a class="nav-link" href="/admin">Admin</a>
+  <form method="POST" action="/auth/logout" style="display:inline">
+    <button class="nav-link" type="submit" style="background:none;border:none;cursor:pointer;color:#a32d2d;">Sign out</button>
+  </form>
+</header>
+
+<main>
+
+  <div class="section">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+      <div class="section-title">🚨 Flagged Packet Management</div>
+      <span class="count-badge">{{.FlaggedCount}} flagged</span>
+    </div>
+    <div class="section-desc">
+      Review, quarantine, delete, or generate YARA rules from all flagged (suspicious) packets captured by the system.
+    </div>
+
+    <div class="action-bar">
+      <button class="btn-action btn-quarantine"
+        hx-post="/admin/flagged/quarantine"
+        hx-target="#action-msg"
+        hx-swap="innerHTML"
+        hx-confirm="Quarantine all flagged packets? This will move them to a separate table.">
+        🔒 Quarantine All
+      </button>
+
+      <button class="btn-action btn-delete"
+        hx-post="/admin/flagged/delete"
+        hx-target="#action-msg"
+        hx-swap="innerHTML"
+        hx-confirm="DELETE all flagged packets? This cannot be undone.">
+        🗑️ Delete All
+      </button>
+
+      <button class="btn-action btn-yara"
+        hx-post="/admin/flagged/yara"
+        hx-swap="none">
+        📄 Generate YARA Rule
+      </button>
+    </div>
+
+    <div id="action-msg"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Flagged Packet History</div>
+    <div id="flagged-list"
+         hx-get="/admin/flagged/list"
+         hx-trigger="load, every 3s">
+      <p class="empty">Loading flagged packets…</p>
+    </div>
+  </div>
+
+</main>
+
+</body>
+</html>
