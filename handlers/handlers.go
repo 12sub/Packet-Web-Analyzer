@@ -3,7 +3,6 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"log"
 	"mime"
@@ -100,10 +99,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/alerts/create", admin(http.HandlerFunc(h.adminAlertsCreate)))
 	mux.Handle("POST /admin/alerts/{id}/delete", admin(http.HandlerFunc(h.adminAlertsDelete)))
 	mux.Handle("GET  /admin/flagged", admin(http.HandlerFunc(h.flaggedPage)))
-    mux.Handle("GET  /admin/flagged/list", admin(http.HandlerFunc(h.flaggedList)))
-    mux.Handle("POST /admin/flagged/quarantine", admin(http.HandlerFunc(h.quarantineFlagged)))
-    mux.Handle("POST /admin/flagged/delete", admin(http.HandlerFunc(h.deleteFlagged)))
-    mux.Handle("POST /admin/flagged/yara", admin(http.HandlerFunc(h.generateYara)))
+	mux.Handle("GET  /admin/flagged/list", admin(http.HandlerFunc(h.flaggedList)))
+	mux.Handle("POST /admin/flagged/quarantine", admin(http.HandlerFunc(h.quarantineFlagged)))
+	mux.Handle("POST /admin/flagged/delete", admin(http.HandlerFunc(h.deleteFlagged)))
+	mux.Handle("POST /admin/flagged/yara", admin(http.HandlerFunc(h.generateYara)))
 }
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
@@ -202,25 +201,42 @@ func (h *Handler) ssePackets(w http.ResponseWriter, r *http.Request) {
 			// Enrich with geo, vendor, OS, hostname
 			h.enricher.Enrich(&pkt)
 
-			flagClass := ""
-			if pkt.Flagged {
-				flagClass = " flagged"
+			// flagClass := ""
+			// Generate ThreatIntel for flagged packets
+			if pkt.Flagged && pkt.Intel == nil {
+				pkt.Intel = &stats.ThreatIntel{
+					ServiceVersion: "Unknown",
+					RouterInfo:     "Standard Gateway",
+					CapturedIPs:    pkt.SrcIP + ", " + pkt.DstIP,
+					Domain:         "Suspicious Activity",
+					PacketInfo:     fmt.Sprintf("%s packet, %d bytes", pkt.Proto, pkt.Size),
+					Severity:       "High",
+					Reason:         "Anomalous traffic pattern detected",
+				}
 			}
 
 			jsonBytes, _ := json.Marshal(pkt)
-			jsonStr := html.EscapeString(string(jsonBytes))
+			// Send JSON to client (NOT HTML)
+			jsonBytes, err := json.Marshal(pkt)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "data: %s\n\n", jsonBytes)
+			flusher.Flush()
 
-			html := fmt.Sprintf(
-				`<tr class="pkt-row%s" data-packet="%s" onclick="showPacketDetail(this)"><td>%s</td><td>%s</td>`+
-					`<td><span class="ptag%s">%s</span></td>`+
-					`<td>%dB</td><td>%s</td></tr>`,
-				flagClass,
-				jsonStr, // HTML-escaped JSON packet data
-				pkt.SrcIP, pkt.DstIP,
-				" "+pkt.Proto, pkt.Proto,
-				pkt.Size,
-				pkt.Time.Format("15:04:05.000"),
-			)
+			// jsonStr := html.EscapeString(string(jsonBytes))
+
+			// html := fmt.Sprintf(
+			// 	`<tr class="pkt-row%s" data-packet="%s" onclick="showPacketDetail(this)"><td>%s</td><td>%s</td>`+
+			// 		`<td><span class="ptag%s">%s</span></td>`+
+			// 		`<td>%dB</td><td>%s</td></tr>`,
+			// 	flagClass,
+			// 	jsonStr, // HTML-escaped JSON packet data
+			// 	pkt.SrcIP, pkt.DstIP,
+			// 	" "+pkt.Proto, pkt.Proto,
+			// 	pkt.Size,
+			// 	pkt.Time.Format("15:04:05.000"),
+			// )
 
 			srcGeo, dstGeo := "", ""
 			if pkt.SrcLocation != nil {
@@ -248,11 +264,12 @@ func (h *Handler) ssePackets(w http.ResponseWriter, r *http.Request) {
 				DstGeo:     dstGeo,
 				SrcHost:    pkt.SrcHost,
 				DstHost:    pkt.DstHost,
+				Quarantined: false,
 			})
 
 			h.exporter.WritePacket(pkt)
 
-			fmt.Fprintf(w, "event: packet\ndata: %s\n\n", html)
+			fmt.Fprintf(w, "event: packet\ndata: %s\n\n", jsonBytes)
 			flusher.Flush()
 		}
 	}
@@ -366,7 +383,7 @@ func (h *Handler) flaggedPage(w http.ResponseWriter, r *http.Request) {
 	claims := auth.ClaimsFromContext(r.Context())
 	count, _ := h.database.CountFlagged()
 	h.tmpl.ExecuteTemplate(w, "flagged.html", map[string]any{
-		"CurrentUser": claims,
+		"CurrentUser":  claims,
 		"FlaggedCount": count,
 	})
 }
