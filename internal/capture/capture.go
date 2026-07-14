@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"example.com/packet-analyser/internal/dpi"
 	"example.com/packet-analyser/internal/metrics"
 	"example.com/packet-analyser/internal/stats"
 
@@ -243,6 +244,9 @@ func parseAdvancedPacket(pkt gopacket.Packet) stats.Packet {
 		p.Intel = intel
 	}
 
+	p.DPI = dpi.Inspect(pkt)
+	
+	p.Flagged = rand.Float32() < 0.03
 	return p
 }
 

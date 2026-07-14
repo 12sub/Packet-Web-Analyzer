@@ -1,0 +1,253 @@
+/* ── Dark Mode Theme ─────────────────────────────────────────────── */
+:root {
+    /* Light mode colors (default) */
+    --bg-primary: #f5f5f3;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #fafaf8;
+    --bg-hover: #f1efe8;
+    --bg-input: #f9f8f5;
+    
+    --text-primary: #1a1a18;
+    --text-secondary: #5f5e5a;
+    --text-muted: #888780;
+    
+    --border-color: #d3d1c7;
+    --border-light: #e8e6e0;
+    --border-lighter: #f0efe8;
+    
+    --accent-primary: #0C447C;
+    --accent-secondary: #378ADD;
+    --accent-success: #3B6D11;
+    --accent-danger: #A32D2D;
+    --accent-warning: #BA7517;
+    
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.07);
+    --shadow-lg: 0 10px 25px rgba(0,0,0,0.1);
+}
+
+/* Dark mode overrides */
+.dark-mode {
+    --bg-primary: #0f0f0e;
+    --bg-secondary: #1a1a18;
+    --bg-tertiary: #242422;
+    --bg-hover: #2a2a28;
+    --bg-input: #1e1e1c;
+    
+    --text-primary: #e8e6e0;
+    --text-secondary: #a8a6a0;
+    --text-muted: #787670;
+    
+    --border-color: #3a3a38;
+    --border-light: #2e2e2c;
+    --border-lighter: #262624;
+    
+    --accent-primary: #4a9eff;
+    --accent-secondary: #5ba8f5;
+    --accent-success: #6bc43f;
+    --accent-danger: #e55353;
+    --accent-warning: #f5a623;
+    
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 6px rgba(0,0,0,0.4);
+    --shadow-lg: 0 10px 25px rgba(0,0,0,0.5);
+}
+
+/* Apply variables to common elements */
+body {
+    background: var(--bg-primary);
+    color: var(--text-primary);
+}
+
+header {
+    background: var(--bg-secondary);
+    border-bottom-color: var(--border-color);
+}
+
+.sidebar {
+    background: var(--bg-secondary);
+    border-right-color: var(--border-color);
+}
+
+.sidebar-link {
+    color: var(--text-primary);
+}
+
+.sidebar-link:hover {
+    background: var(--bg-hover);
+    color: var(--accent-primary);
+}
+
+.main-content {
+    background: var(--bg-primary);
+}
+
+.card, .stat-card, .panel, .table-container, .section {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+}
+
+.card-title, .stat-label, .panel-title, .section-title {
+    color: var(--text-muted);
+}
+
+.stat-value {
+    color: var(--text-primary);
+}
+
+table {
+    color: var(--text-primary);
+}
+
+th {
+    background: var(--bg-tertiary);
+    border-bottom-color: var(--border-light);
+    color: var(--text-muted);
+}
+
+td {
+    border-bottom-color: var(--border-lighter);
+}
+
+tr:hover td {
+    background: var(--bg-hover);
+}
+
+tr.flagged td {
+    background: rgba(163, 45, 45, 0.15);
+}
+
+.btn {
+    background: var(--bg-secondary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.btn:hover {
+    background: var(--bg-hover);
+}
+
+.btn-primary {
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: #fff;
+}
+
+.filter-group input {
+    background: var(--bg-input);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.filter-group input:focus {
+    background: var(--bg-secondary);
+    border-color: var(--accent-secondary);
+}
+
+.user-badge {
+    background: var(--bg-tertiary);
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+.modal {
+    background: rgba(0, 0, 0, 0.7);
+}
+
+.modal-content {
+    background: var(--bg-secondary);
+    box-shadow: var(--shadow-lg);
+}
+
+.detail-card {
+    background: var(--bg-tertiary);
+    border-color: var(--border-light);
+}
+
+.detail-row {
+    border-bottom-color: var(--border-lighter);
+}
+
+.detail-row span:first-child {
+    color: var(--text-muted);
+}
+
+.detail-row span:last-child {
+    color: var(--text-primary);
+}
+
+/* Protocol tags - adjust for dark mode */
+.dark-mode .ptag.TCP { background: #1a3a5c; color: #6bb3f5; }
+.dark-mode .ptag.UDP { background: #2a4a1a; color: #8fd45f; }
+.dark-mode .ptag.DNS { background: #4a3a1a; color: #f5c45f; }
+.dark-mode .ptag.ICMP { background: #4a1a2a; color: #f55f8f; }
+.dark-mode .ptag.HTTP { background: #2a1a4a; color: #a58ff5; }
+
+/* Bar charts */
+.bar-bg {
+    background: var(--bg-tertiary);
+}
+
+.bar-fill {
+    background: var(--accent-secondary);
+}
+
+/* Charts - Chart.js respects CSS variables */
+canvas {
+    filter: brightness(0.95);
+}
+
+.dark-mode canvas {
+    filter: brightness(1.05) contrast(1.1);
+}
+
+/* Toggle button */
+.theme-toggle {
+    background: var(--bg-tertiary);
+    border: 0.5px solid var(--border-color);
+    border-radius: 6px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 16px;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.theme-toggle:hover {
+    background: var(--bg-hover);
+    border-color: var(--accent-secondary);
+}
+
+.theme-toggle .icon-light,
+.theme-toggle .icon-dark {
+    display: none;
+}
+
+body:not(.dark-mode) .theme-toggle .icon-light {
+    display: inline;
+}
+
+body.dark-mode .theme-toggle .icon-dark {
+    display: inline;
+}
+
+/* Scrollbar styling for dark mode */
+.dark-mode ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.dark-mode ::-webkit-scrollbar-track {
+    background: var(--bg-tertiary);
+}
+
+.dark-mode ::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: 5px;
+}
+
+.dark-mode ::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}

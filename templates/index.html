@@ -11,6 +11,8 @@
     <!-- Leaflet — geo IP map -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <link rel="stylesheet" href="/static/darkmode.css">
+    <script src="/static/darkmode.js"></script>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: system-ui, sans-serif; background: #f5f5f3; color: #1a1a18; display: flex; flex-direction: column; min-height: 100vh; }
@@ -117,6 +119,72 @@
         .geo-card { grid-column: 1 / -1; }
         #detail-map { height: 220px; border-radius: 6px; border: 0.5px solid #e8e6e0; }
 
+        .dpi-section {
+            margin-bottom: 12px;
+            padding: 10px;
+            background: #f9f8f5;
+            border-radius: 6px;
+            border-left: 3px solid #378ADD;
+        }
+
+        .dpi-section.dpi-warning {
+            border-left-color: #A32D2D;
+            background: #FCEBEB;
+        }
+
+        .dpi-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: #5f5e5a;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+
+        .dpi-value {
+            font-size: 12px;
+            font-family: monospace;
+            color: #1a1a18;
+            margin: 4px 0;
+            word-break: break-all;
+        }
+
+        .dpi-headers {
+            font-size: 11px;
+            color: #5f5e5a;
+            margin-top: 6px;
+            padding: 6px;
+            background: #fff;
+            border-radius: 4px;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+
+        .dpi-body {
+            font-size: 11px;
+            margin-top: 6px;
+            padding: 6px;
+            background: #fff;
+            border-radius: 4px;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+
+        .dpi-payload {
+            font-size: 10px;
+            margin-top: 6px;
+            padding: 8px;
+            background: #fff;
+            border-radius: 4px;
+            max-height: 150px;
+            overflow-y: auto;
+        }
+
+        .dpi-payload code {
+            display: block;
+            word-break: break-all;
+            white-space: pre-wrap;
+}
+
         @media(max-width: 720px) {
             .mid, .bottom, .analytics { grid-template-columns: 1fr; }
             .analytics .geo-panel { grid-column: 1; }
@@ -136,6 +204,10 @@
         <button onclick="clearFilter()">Clear</button>
         <span id="filter-status"></span>
     </div>
+    <button class="theme-toggle" onclick="toggleTheme()" title="Toggle dark mode">
+        <span class="icon-light">🌙</span>
+        <span class="icon-dark">☀️</span>
+    </button>
     {{if .CurrentUser}}
     <span class="user-badge">{{.CurrentUser.Username}} ({{.CurrentUser.Role}})</span>
     <form method="POST" action="/auth/logout" style="display:inline">
@@ -279,6 +351,13 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
+
+<div class="detail-card" style="grid-column: 1 / -1;">
+    <div class="detail-card-title">🔬 Deep Packet Inspection</div>
+    <div id="dpi-content">
+        <p style="color: #888780; font-size: 12px;">No DPI data available</p>
     </div>
 </div>
 
@@ -451,6 +530,7 @@
         
         document.getElementById('packet-modal').style.display = 'flex';
         
+        
         if (!detailMap) {
             detailMap = L.map('detail-map').setView([20, 0], 2);
             L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
@@ -478,10 +558,71 @@
         } else {
             detailMap.setView([20, 0], 2);
         }
+         const dpiContent = document.getElementById('dpi-content');
+    if (data.dpi) {
+        let dpiHTML = '';
+        
+        // HTTP
+        if (data.dpi.http_method) {
+            dpiHTML += `<div class="dpi-section">
+                <div class="dpi-label">HTTP Request</div>
+                <div class="dpi-value">${data.dpi.http_method} ${data.dpi.http_url}</div>
+                ${data.dpi.http_host ? `<div class="dpi-value">Host: ${data.dpi.http_host}</div>` : ''}
+                ${data.dpi.http_headers && Object.keys(data.dpi.http_headers).length > 0 ? 
+                    `<div class="dpi-headers">${Object.entries(data.dpi.http_headers).map(([k,v]) => `${k}: ${v}`).join('<br>')}</div>` : ''}
+                ${data.dpi.http_body ? `<div class="dpi-body"><strong>Body:</strong> ${escapeHtml(data.dpi.http_body)}</div>` : ''}
+            </div>`;
+        }
+        // DNS
+        if (data.dpi.dns_query) {
+            dpiHTML += `<div class="dpi-section">
+                <div class="dpi-label">DNS Query</div>
+                <div class="dpi-value">${data.dpi.dns_query} (${data.dpi.dns_type})</div>
+                ${data.dpi.dns_responses && data.dpi.dns_responses.length > 0 ? 
+                    `<div class="dpi-value">Responses: ${data.dpi.dns_responses.join(', ')}</div>` : ''}
+            </div>`;
+        }
+         // TLS
+        if (data.dpi.tls_sni || data.dpi.tls_version) {
+            dpiHTML += `<div class="dpi-section">
+                <div class="dpi-label">TLS</div>
+                ${data.dpi.tls_sni ? `<div class="dpi-value">SNI: ${data.dpi.tls_sni}</div>` : ''}
+                ${data.dpi.tls_version ? `<div class="dpi-value">Version: ${data.dpi.tls_version}</div>` : ''}
+            </div>`;
+        }
+        // Sensitive Data
+        if (data.dpi.sensitive_data && data.dpi.sensitive_data.length > 0) {
+            dpiHTML += `<div class="dpi-section dpi-warning">
+                <div class="dpi-label">⚠️ Sensitive Data Detected</div>
+                ${data.dpi.sensitive_data.map(s => 
+                    `<div class="dpi-value"><strong>${s.type}:</strong> ${escapeHtml(s.value)}</div>`
+                ).join('')}
+            </div>`;
+        }
+         // Payload preview
+        if (data.dpi.payload_hex) {
+            dpiHTML += `<div class="dpi-section">
+                <div class="dpi-label">Payload Preview (first 512 bytes)</div>
+                <div class="dpi-payload">
+                    <div><strong>Hex:</strong> <code>${data.dpi.payload_hex.substring(0, 200)}${data.dpi.payload_hex.length > 200 ? '...' : ''}</code></div>
+                    <div style="margin-top: 8px;"><strong>ASCII:</strong> <code>${escapeHtml(data.dpi.payload_ascii.substring(0, 200))}${data.dpi.payload_ascii.length > 200 ? '...' : ''}</code></div>
+                </div>
+            </div>`;
+        }
+        dpiContent.innerHTML = dpiHTML || '<p style="color: #888780;">No DPI data available</p>';
+    } else {
+        dpiContent.innerHTML = '<p style="color: #888780;">No DPI data available</p>';
+    }
     }
     
     function closePacketDetail() {
         document.getElementById('packet-modal').style.display = 'none';
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
     
     document.addEventListener('keydown', function(e) {

@@ -103,6 +103,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("POST /admin/flagged/quarantine", admin(http.HandlerFunc(h.quarantineFlagged)))
 	mux.Handle("POST /admin/flagged/delete", admin(http.HandlerFunc(h.deleteFlagged)))
 	mux.Handle("GET /admin/flagged/yara", admin(http.HandlerFunc(h.generateYara)))
+
+	// --- Static files (CSS, JS, images) ------------------------------------
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 }
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
@@ -248,6 +251,13 @@ func (h *Handler) ssePackets(w http.ResponseWriter, r *http.Request) {
 				dstGeo = string(b)
 			}
 
+			dpiJSON := ""
+			if pkt.DPI != nil {
+				if b, err := json.Marshal(pkt.DPI); err == nil {
+					dpiJSON = string(b)
+				}
+			}
+
 			h.database.Insert(db.Row{
 				SrcIP:       pkt.SrcIP,
 				DstIP:       pkt.DstIP,
@@ -265,6 +275,7 @@ func (h *Handler) ssePackets(w http.ResponseWriter, r *http.Request) {
 				SrcHost:     pkt.SrcHost,
 				DstHost:     pkt.DstHost,
 				Quarantined: false,
+				DPIData:     dpiJSON,
 			})
 
 			h.exporter.WritePacket(pkt)

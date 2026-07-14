@@ -4,6 +4,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"example.com/packet-analyser/internal/dpi"
 )
 
 // ThreatIntel holds deep inspection data for flagged packets
@@ -47,6 +49,9 @@ type Packet struct {
 	DstLocation *Location  `json:"dst_location,omitempty"`
 	SrcHost     string     `json:"src_host,omitempty"`
 	DstHost     string     `json:"dst_host,omitempty"`
+
+	// Deep Packet Inspection (DPI) data
+	DPI *dpi.Inspection `json:"dpi,omitempty"`
 }
 
 type IPEntry struct {

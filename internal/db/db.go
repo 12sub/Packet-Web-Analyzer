@@ -28,6 +28,7 @@ type Row struct {
 	SrcHost     string
 	DstHost     string
 	Quarantined bool
+	DPIData     string
 }
 
 func Open(path string) (*DB, error) {
@@ -66,7 +67,8 @@ func migrate(c *sql.DB) error {
 			src_geo     TEXT,
 			dst_geo     TEXT,
 			src_host    TEXT,
-			dst_host    TEXT
+			dst_host    TEXT,
+			dpi_data    TEXT
 		);
 		CREATE INDEX IF NOT EXISTS idx_packets_captured_at ON packets(captured_at);
 		CREATE INDEX IF NOT EXISTS idx_packets_proto       ON packets(proto);
@@ -122,6 +124,7 @@ func addColumns(c *sql.DB) {
 		"dst_geo TEXT",
 		"src_host TEXT",
 		"dst_host TEXT",
+		"dpi_data TEXT",
 		// IMPORTANT: Must have DEFAULT when adding NOT NULL to existing table
 		"quarantined INTEGER NOT NULL DEFAULT 0",
 	}
@@ -134,11 +137,11 @@ func addColumns(c *sql.DB) {
 func (d *DB) Insert(r Row) error {
 	_, err := d.conn.Exec(
 		`INSERT INTO packets (src_ip,dst_ip,proto,size,flagged,captured_at,quarantined,
-		 src_mac,dst_mac,src_vendor,dst_vendor,ttl,src_geo,dst_geo,src_host,dst_host)
-		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		 src_mac,dst_mac,src_vendor,dst_vendor,ttl,src_geo,dst_geo,src_host,dst_host,dpi_data)
+		 VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		r.SrcIP, r.DstIP, r.Proto, r.Size, boolInt(r.Flagged), r.CapturedAt, boolInt(r.Quarantined),
 		r.SrcMAC, r.DstMAC, r.SrcVendor, r.DstVendor, r.TTL,
-		r.SrcGeo, r.DstGeo, r.SrcHost, r.DstHost,
+		r.SrcGeo, r.DstGeo, r.SrcHost, r.DstHost, r.DPIData,
 	)
 	return err
 }
@@ -243,6 +246,10 @@ func (d *DB) GenerateYaraRule() (string, error) {
 		if dstHost != "" {
 			hostSet[dstHost] = true
 		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return "", err
 	}
 
 	var hostStrings []string
