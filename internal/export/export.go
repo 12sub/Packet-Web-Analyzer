@@ -110,12 +110,13 @@ func ExportCSV(database *db.DB, limit int) (string, error) {
 	defer f.Close()
 
 	w := csv.NewWriter(f)
-	w.Write([]string{"id", "src_ip", "dst_ip", "proto", "size", "flagged", "captured_at"})
+	w.Write([]string{"id", "src_ip", "dst_ip", "proto", "size", "flagged", "captured_at", "src_mac", "dst_mac", "src_vendor", "dst_vendor"})
 	for _, r := range rows {
 		w.Write([]string{
 			fmt.Sprint(r.ID), r.SrcIP, r.DstIP, r.Proto,
 			fmt.Sprint(r.Size), fmt.Sprint(r.Flagged),
 			r.CapturedAt.Format(time.RFC3339),
+			r.SrcMAC, r.DstMAC, r.SrcVendor, r.DstVendor,
 		})
 	}
 	w.Flush()

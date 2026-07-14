@@ -50,6 +50,12 @@
     .btn-delete:hover { background: #f5d0d0; }
     .btn-yara { background: #E6F1FB; color: #0C447C; }
     .btn-yara:hover { background: #d0e4f5; }
+    a.btn-action {
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
 
     /* Status messages */
     #action-msg { font-size: 13px; font-family: monospace; min-height: 20px; }
@@ -143,11 +149,9 @@
         🗑️ Delete All
       </button>
 
-      <button class="btn-action btn-yara"
-        hx-post="/admin/flagged/yara"
-        hx-swap="none">
+      <a href="/admin/flagged/yara" class="btn-action btn-yara" download="flagged_traffic.yar">
         📄 Generate YARA Rule
-      </button>
+      </a>
     </div>
 
     <div id="action-msg"></div>

@@ -177,6 +177,8 @@ func parseAdvancedPacket(pkt gopacket.Packet) stats.Packet {
 		// 1. Router Info (MAC OUI)
 		if ethLayer := pkt.Layer(layers.LayerTypeEthernet); ethLayer != nil {
 			eth := ethLayer.(*layers.Ethernet)
+			p.SrcMAC = eth.SrcMAC.String()
+			p.DstMAC = eth.DstMAC.String()
 			if info := getRouterInfo(eth.SrcMAC.String()); info != "" {
 				intel.RouterInfo = fmt.Sprintf("Source: %s", info)
 			} else if info := getRouterInfo(eth.DstMAC.String()); info != "" {
@@ -284,6 +286,15 @@ func (c *Capturer) runMock(store *stats.Store) {
 	metrics.ActiveCaptures.Inc()
 	defer metrics.ActiveCaptures.Dec()
 
+	var mockMACs = []string{
+		"00:1A:11:AA:BB:CC", // Google
+		"AC:DE:48:11:22:33", // Apple
+		"00:50:56:44:55:66", // VMware
+		"B8:27:EB:77:88:99", // Raspberry Pi
+		"02:42:AC:00:11:02", // Docker
+		"70:03:7E:AB:CD:EF", // Cisco
+	}
+
 	subnets := []string{"10.0.1", "10.0.2", "10.0.3", "10.0.4", "10.0.5",
 		"192.168.0", "192.168.1", "192.168.2",
 		"172.16.4", "172.16.5", "172.16.6",
@@ -310,6 +321,8 @@ func (c *Capturer) runMock(store *stats.Store) {
 			p := stats.Packet{
 				SrcIP:   fmt.Sprintf("%s.%d", subnets[r.Intn(len(subnets))], r.Intn(253)+1),
 				DstIP:   fmt.Sprintf("%s.%d", subnets[r.Intn(len(subnets))], r.Intn(253)+1),
+				SrcMAC:  mockMACs[r.Intn(len(mockMACs))],
+				DstMAC:  mockMACs[r.Intn(len(mockMACs))],
 				Proto:   protos[r.Intn(len(protos))],
 				Size:    pktSize,
 				Flagged: r.Float32() < 0.04,

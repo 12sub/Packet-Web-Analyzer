@@ -102,7 +102,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.Handle("GET  /admin/flagged/list", admin(http.HandlerFunc(h.flaggedList)))
 	mux.Handle("POST /admin/flagged/quarantine", admin(http.HandlerFunc(h.quarantineFlagged)))
 	mux.Handle("POST /admin/flagged/delete", admin(http.HandlerFunc(h.deleteFlagged)))
-	mux.Handle("POST /admin/flagged/yara", admin(http.HandlerFunc(h.generateYara)))
+	mux.Handle("GET /admin/flagged/yara", admin(http.HandlerFunc(h.generateYara)))
 }
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
@@ -249,21 +249,21 @@ func (h *Handler) ssePackets(w http.ResponseWriter, r *http.Request) {
 			}
 
 			h.database.Insert(db.Row{
-				SrcIP:      pkt.SrcIP,
-				DstIP:      pkt.DstIP,
-				Proto:      pkt.Proto,
-				Size:       pkt.Size,
-				Flagged:    pkt.Flagged,
-				CapturedAt: pkt.Time,
-				SrcMAC:     pkt.SrcMAC,
-				DstMAC:     pkt.DstMAC,
-				SrcVendor:  pkt.SrcVendor,
-				DstVendor:  pkt.DstVendor,
-				TTL:        pkt.TTL,
-				SrcGeo:     srcGeo,
-				DstGeo:     dstGeo,
-				SrcHost:    pkt.SrcHost,
-				DstHost:    pkt.DstHost,
+				SrcIP:       pkt.SrcIP,
+				DstIP:       pkt.DstIP,
+				Proto:       pkt.Proto,
+				Size:        pkt.Size,
+				Flagged:     pkt.Flagged,
+				CapturedAt:  pkt.Time,
+				SrcMAC:      pkt.SrcMAC,
+				DstMAC:      pkt.DstMAC,
+				SrcVendor:   pkt.SrcVendor,
+				DstVendor:   pkt.DstVendor,
+				TTL:         pkt.TTL,
+				SrcGeo:      srcGeo,
+				DstGeo:      dstGeo,
+				SrcHost:     pkt.SrcHost,
+				DstHost:     pkt.DstHost,
 				Quarantined: false,
 			})
 
